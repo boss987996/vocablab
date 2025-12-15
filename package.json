@@ -1,0 +1,9 @@
+{
+  "name": "vocablab",
+  "version": "1.0.0",
+  "description": "TOEIC Vocabulary Learning App with SRS",
+  "scripts": {
+    "start": "npx serve .",
+    "build": "echo 'Static site - no build needed'"
+  }
+}
