@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VocabLab - TOEIC Vocabulary</title>
+  <meta name="description" content="Learn TOEIC vocabulary with spaced repetition and AI assistance">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            cream: '#F8FAFC',
+            'cream-dark': '#F1F5F9',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    * { font-family: 'Inter', sans-serif; }
+    body { background: #F8FAFC; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+    @keyframes flip { 0% { transform: rotateX(0); } 50% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
+    .card-flip { animation: flip 0.4s ease-out; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+// ============================================
+// VOCABLAB v2 - Clean & Premium UI
+// Using Google Gemini API (FREE!)
+// ============================================
+
+const { useState, useEffect, useMemo } = React;
+
+// Configuration
+const INTERVALS = [1, 3, 7, 30];
+const MIN_EASE_FACTOR = 1.3;
+const DEFAULT_EASE_FACTOR = 2.5;
+
+// Database Layer (localStorage)
+const DB = {
+  getDecks: () => JSON.parse(localStorage.getItem('vocablab_decks') || '[]'),
+  saveDecks: (decks) => localStorage.setItem('vocablab_decks', JSON.stringify(decks)),
+  getCards: () => JSON.parse(localStorage.getItem('vocablab_cards') || '[]'),
+  saveCards: (cards) => localStorage.setItem('vocablab_cards', JSON.stringify(cards)),
+  getReviews: () => JSON.parse(localStorage.getItem('vocablab_reviews') || '[]'),
+  saveReviews: (reviews) => localStorage.setItem('vocablab_reviews', JSON.stringify(reviews)),
+  getStats: () => JSON.parse(localStorage.getItem('vocablab_stats') || '{"streak":0,"lastStudyDate":null,"totalReviews":0}'),
+  saveStats: (stats) => localStorage.setItem('vocablab_stats', JSON.stringify(stats)),
+  getApiKey: () => localStorage.getItem('vocablab_gemini_key') || '',
+  saveApiKey: (key) => localStorage.setItem('vocablab_gemini_key', key),
+};
+
+// ============================================
+// AI Service with Google Gemini API
+// ============================================
+const AIService = {
+  cache: new Map(),
+  
+  async callGemini(prompt, apiKey) {
+    if (!apiKey) throw new Error('API Key not set');
+    
+    const models = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+    let lastError = null;
+    
+    for (const model of models) {
+      try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: 200 }
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response';
+        }
+        
+        const error = await response.json();
+        lastError = error.error?.message || 'API request failed';
+        if (lastError.includes('quota') || lastError.includes('not found')) continue;
+        throw new Error(lastError);
+      } catch (e) {
+        lastError = e.message;
+        continue;
+      }
+    }
+    throw new Error(lastError || 'All models failed');
+  },
+  
+  async generateExample(word, meaning, apiKey) {
+    const cacheKey = `example_${word}`;
+    if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+    const prompt = `Create ONE short example sentence (max 15 words) using "${word}" (meaning: ${meaning}) in TOEIC business context. Return ONLY the sentence.`;
+    try {
+      const result = await this.callGemini(prompt, apiKey);
+      this.cache.set(cacheKey, result.trim());
+      return result.trim();
+    } catch (e) { return `The team needs to ${word.toLowerCase()} the project deadline.`; }
+  },
+  
+  async explainMeaning(word, meaning, apiKey) {
+    const cacheKey = `explain_${word}`;
+    if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+    const prompt = `Explain "${word}" (${meaning}) briefly for TOEIC learners in 1-2 sentences. Return ONLY the explanation.`;
+    try {
+      const result = await this.callGemini(prompt, apiKey);
+      this.cache.set(cacheKey, result.trim());
+      return result.trim();
+    } catch (e) { return `"${word}" means ${meaning}. Commonly used in business contexts.`; }
+  },
+  
+  async getFamiliarVocab(word, meaning, apiKey) {
+    const cacheKey = `familiar_${word}`;
+    if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+    const prompt = `For "${word}" (${meaning}), list exactly 5 related TOEIC words.\nFormat: Word (part of speech) - Thai meaning\nExample: Standard (noun) - มาตรฐาน`;
+    try {
+      const result = await this.callGemini(prompt, apiKey);
+      this.cache.set(cacheKey, result.trim());
+      return result.trim();
+    } catch (e) { return `Similar (adj) - คล้ายคลึง\nRelated (adj) - เกี่ยวข้อง\nEquivalent (noun) - สิ่งเทียบเท่า\nComparable (adj) - เปรียบเทียบได้\nCorresponding (adj) - สอดคล้อง`; }
+  }
+};
+
+// SRS Logic
+function calculateNextReview(card, quality) {
+  let { repetitions = 0, intervalIndex = 0, easeFactor = DEFAULT_EASE_FACTOR } = card;
+  if (quality < 2) { repetitions = 0; intervalIndex = 0; }
+  else {
+    repetitions += 1;
+    if (repetitions === 1) intervalIndex = 0;
+    else if (repetitions === 2) intervalIndex = 1;
+    else intervalIndex = Math.min(intervalIndex + 1, INTERVALS.length - 1);
+  }
+  const q = quality + 2;
+  easeFactor = Math.max(MIN_EASE_FACTOR, easeFactor + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)));
+  if (quality === 3) intervalIndex = Math.min(intervalIndex + 1, INTERVALS.length - 1);
+  const days = INTERVALS[intervalIndex];
+  const nextReviewAt = new Date();
+  nextReviewAt.setDate(nextReviewAt.getDate() + days);
+  return { repetitions, intervalIndex, easeFactor: Math.round(easeFactor * 100) / 100, nextReviewAt: nextReviewAt.toISOString(), lastInterval: days };
+}
+
+function isDue(card) {
+  if (!card.nextReviewAt) return true;
+  return new Date(card.nextReviewAt) <= new Date();
+}
+
+// CSV Parser
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+  return lines.slice(1).map(line => {
+    const values = line.split(',').map(v => v.trim());
+    const card = {};
+    headers.forEach((header, i) => {
+      if (header === 'word' || header === 'front') card.front = values[i] || '';
+      else if (header === 'meaning_th' || header === 'back') card.back = values[i] || '';
+      else if (header === 'example') card.example = values[i] || '';
+      else if (header === 'phonetic') card.phonetic = values[i] || '';
+    });
+    return card;
+  }).filter(c => c.front && c.back);
+}
+
+const generateId = () => Math.random().toString(36).substr(2, 9);
+const formatDate = (date) => new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+
+// ============================================
+// Icons (Minimal SVG)
+// ============================================
+const Icons = {
+  Home: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
+  Book: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>,
+  Play: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+  Settings: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+  Plus: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+  X: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>,
+  Check: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
+  Sparkles: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>,
+  ChevronLeft: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>,
+  Fire: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" /></svg>,
+  Upload: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
+  Trash: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
+};
+
+// ============================================
+// Main App Component
+// ============================================
+function VocabLabApp() {
+  const [view, setView] = useState('home');
+  const [decks, setDecks] = useState([]);
+  const [cards, setCards] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [stats, setStats] = useState({ streak: 0, lastStudyDate: null, totalReviews: 0 });
+  const [selectedDeck, setSelectedDeck] = useState(null);
+  const [studyCards, setStudyCards] = useState([]);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiContent, setAiContent] = useState({ example: '', explanation: '', familiarVocab: '' });
+  const [notification, setNotification] = useState(null);
+  const [apiKey, setApiKey] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [showAddDeck, setShowAddDeck] = useState(false);
+  const [showAddCard, setShowAddCard] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+
+  // Load data
+  useEffect(() => {
+    setDecks(DB.getDecks());
+    setCards(DB.getCards());
+    setReviews(DB.getReviews());
+    setStats(DB.getStats());
+    setApiKey(DB.getApiKey());
+  }, []);
+
+  // Auto-save
+  useEffect(() => { DB.saveDecks(decks); }, [decks]);
+  useEffect(() => { DB.saveCards(cards); }, [cards]);
+  useEffect(() => { DB.saveReviews(reviews); }, [reviews]);
+  useEffect(() => { DB.saveStats(stats); }, [stats]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (view !== 'study' || !studyCards.length) return;
+      if (!showAnswer && (e.code === 'Space' || e.code === 'Enter')) {
+        e.preventDefault();
+        setShowAnswer(true);
+      } else if (showAnswer) {
+        if (e.key === '1') handleReview(0);
+        else if (e.key === '2') handleReview(1);
+        else if (e.key === '3') handleReview(2);
+        else if (e.key === '4') handleReview(3);
+      }
+    };
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [view, showAnswer, studyCards, currentCardIndex]);
+
+  const showNotif = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const dueCards = useMemo(() => cards.filter(isDue), [cards]);
+  const todayReviews = useMemo(() => {
+    const today = new Date().toDateString();
+    return reviews.filter(r => new Date(r.reviewedAt).toDateString() === today);
+  }, [reviews]);
+
+  // Deck operations
+  const createDeck = (title) => {
+    setDecks([...decks, { id: generateId(), title, createdAt: new Date().toISOString() }]);
+    showNotif(`สร้าง "${title}" สำเร็จ`);
+    setShowAddDeck(false);
+  };
+
+  const deleteDeck = (deckId) => {
+    setDecks(decks.filter(d => d.id !== deckId));
+    setCards(cards.filter(c => c.deckId !== deckId));
+    showNotif('ลบ Deck สำเร็จ');
+  };
+
+  // Card operations
+  const addCard = (deckId, cardData) => {
+    setCards([...cards, {
+      id: generateId(), deckId, ...cardData,
+      repetitions: 0, intervalIndex: 0, easeFactor: DEFAULT_EASE_FACTOR,
+      nextReviewAt: new Date().toISOString(), createdAt: new Date().toISOString()
+    }]);
+    showNotif('เพิ่มคำศัพท์สำเร็จ');
+  };
+
+  const updateCard = (cardId, updates) => {
+    setCards(cards.map(c => c.id === cardId ? { ...c, ...updates } : c));
+  };
+
+  const deleteCard = (cardId) => {
+    setCards(cards.filter(c => c.id !== cardId));
+  };
+
+  const importCards = (deckId, csvText) => {
+    const parsed = parseCSV(csvText);
+    const newCards = parsed.map(c => ({
+      id: generateId(), deckId, front: c.front, back: c.back,
+      example: c.example || '', phonetic: c.phonetic || '',
+      repetitions: 0, intervalIndex: 0, easeFactor: DEFAULT_EASE_FACTOR,
+      nextReviewAt: new Date().toISOString(), createdAt: new Date().toISOString()
+    }));
+    setCards([...cards, ...newCards]);
+    showNotif(`นำเข้า ${newCards.length} คำศัพท์สำเร็จ`);
+    setShowImport(false);
+  };
+
+  // Study operations
+  const startStudy = (deckId = null) => {
+    let cardsToStudy = deckId ? cards.filter(c => c.deckId === deckId && isDue(c)) : dueCards;
+    cardsToStudy = cardsToStudy.sort(() => Math.random() - 0.5);
+    if (!cardsToStudy.length) {
+      showNotif('ไม่มีการ์ดที่ต้องทบทวน', 'info');
+      return;
+    }
+    setStudyCards(cardsToStudy);
+    setCurrentCardIndex(0);
+    setShowAnswer(false);
+    setAiContent({ example: '', explanation: '', familiarVocab: '' });
+    setView('study');
+  };
+
+  const handleReview = (quality) => {
+    const card = studyCards[currentCardIndex];
+    const updates = calculateNextReview(card, quality);
+    updateCard(card.id, updates);
+    
+    setReviews([...reviews, {
+      id: generateId(), cardId: card.id, quality,
+      intervalDays: updates.lastInterval, reviewedAt: new Date().toISOString()
+    }]);
+    
+    const today = new Date().toDateString();
+    const newStats = { ...stats, totalReviews: stats.totalReviews + 1 };
+    if (stats.lastStudyDate !== today) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      newStats.streak = stats.lastStudyDate === yesterday.toDateString() ? stats.streak + 1 : 1;
+      newStats.lastStudyDate = today;
+    }
+    setStats(newStats);
+    
+    if (currentCardIndex < studyCards.length - 1) {
+      setCurrentCardIndex(currentCardIndex + 1);
+      setShowAnswer(false);
+      setAiContent({ example: '', explanation: '', familiarVocab: '' });
+    } else {
+      showNotif('ทบทวนครบแล้ว! 🎉');
+      setView('home');
+    }
+  };
+
+  // AI operations
+  const generateExample = async () => {
+    const card = studyCards[currentCardIndex];
+    setAiLoading(true);
+    try {
+      const example = await AIService.generateExample(card.front, card.back, apiKey);
+      setAiContent(prev => ({ ...prev, example }));
+    } catch (e) { showNotif('ไม่สามารถสร้างตัวอย่างได้', 'error'); }
+    setAiLoading(false);
+  };
+
+  const explainMeaning = async () => {
+    const card = studyCards[currentCardIndex];
+    setAiLoading(true);
+    try {
+      const explanation = await AIService.explainMeaning(card.front, card.back, apiKey);
+      setAiContent(prev => ({ ...prev, explanation }));
+    } catch (e) { showNotif('ไม่สามารถอธิบายได้', 'error'); }
+    setAiLoading(false);
+  };
+
+  const getFamiliarVocab = async () => {
+    const card = studyCards[currentCardIndex];
+    setAiLoading(true);
+    try {
+      const familiarVocab = await AIService.getFamiliarVocab(card.front, card.back, apiKey);
+      setAiContent(prev => ({ ...prev, familiarVocab }));
+    } catch (e) { showNotif('ไม่สามารถหาคำที่เกี่ยวข้องได้', 'error'); }
+    setAiLoading(false);
+  };
+
+  const saveApiKey = (key) => {
+    setApiKey(key);
+    DB.saveApiKey(key);
+    showNotif('บันทึก API Key สำเร็จ');
+    setShowSettings(false);
+  };
+
+  const testApiKey = async () => {
+    if (!apiKey) { showNotif('กรุณาใส่ API Key ก่อน', 'error'); return; }
+    setAiLoading(true);
+    try {
+      await AIService.callGemini('Hi', apiKey);
+      showNotif('✅ API Key ใช้งานได้!');
+    } catch (e) { showNotif('❌ ' + e.message, 'error'); }
+    setAiLoading(false);
+  };
+
+  // ============================================
+  // COMPONENTS
+  // ============================================
+
+  // Bottom Navigation
+  const BottomNav = () => (
+    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-2 pb-safe z-50">
+      <div className="max-w-lg mx-auto flex justify-around items-center">
+        {[
+          { id: 'home', icon: Icons.Home, label: 'Home' },
+          { id: 'library', icon: Icons.Book, label: 'Library' },
+          { id: 'settings', icon: Icons.Settings, label: 'Settings' },
+        ].map(item => (
+          <button
+            key={item.id}
+            onClick={() => item.id === 'settings' ? setShowSettings(true) : setView(item.id)}
+            className={`flex flex-col items-center py-2 px-4 rounded-2xl transition-all ${
+              view === item.id ? 'text-amber-600 bg-amber-50' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <item.icon />
+            <span className="text-xs mt-1 font-medium">{item.label}</span>
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+
+  // Home View
+  const HomeView = () => {
+    const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const today = new Date();
+    const weekStats = Array.from({length: 7}, (_, i) => {
+      const d = new Date(today); d.setDate(d.getDate() - (6 - i));
+      const count = reviews.filter(r => new Date(r.reviewedAt).toDateString() === d.toDateString()).length;
+      return { day: weekDays[d.getDay()], count, isToday: i === 6 };
+    });
+    const maxCount = Math.max(...weekStats.map(s => s.count), 1);
+
+    return (
+      <div className="animate-fadeIn pb-24">
+        {/* Header */}
+        <div className="px-6 pt-12 pb-6">
+          <p className="text-slate-500 text-sm">Welcome back 👋</p>
+          <h1 className="text-2xl font-bold text-slate-900 mt-1">VocabLab</h1>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="px-6 grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-3xl p-5 text-white shadow-lg shadow-amber-200">
+            <div className="flex items-center gap-2 mb-2">
+              <Icons.Fire />
+              <span className="text-amber-100 text-sm font-medium">Streak</span>
+            </div>
+            <p className="text-4xl font-bold">{stats.streak}</p>
+            <p className="text-amber-100 text-sm">days</p>
+          </div>
+          <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
+            <p className="text-slate-500 text-sm mb-2">Due Today</p>
+            <p className="text-4xl font-bold text-slate-900">{dueCards.length}</p>
+            <p className="text-slate-400 text-sm">cards</p>
+          </div>
+        </div>
+
+        {/* Study Button */}
+        {dueCards.length > 0 && (
+          <div className="px-6 mb-8">
+            <button
+              onClick={() => startStudy()}
+              className="w-full bg-slate-900 text-white py-4 rounded-2xl font-semibold text-lg shadow-lg shadow-slate-300 hover:bg-slate-800 transition-all active:scale-[0.98] flex items-center justify-center gap-3"
+            >
+              <Icons.Play />
+              Start Review ({dueCards.length} cards)
+            </button>
+          </div>
+        )}
+
+        {/* Weekly Progress */}
+        <div className="px-6 mb-6">
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+            <h3 className="text-slate-900 font-semibold mb-4">This Week</h3>
+            <div className="flex justify-between items-end h-24">
+              {weekStats.map((stat, i) => (
+                <div key={i} className="flex flex-col items-center flex-1">
+                  <div className="w-full max-w-[28px] flex flex-col items-center">
+                    {stat.count > 0 && (
+                      <span className="text-xs font-medium text-slate-600 mb-1">{stat.count}</span>
+                    )}
+                    <div
+                      className={`w-full rounded-lg transition-all ${stat.isToday ? 'bg-amber-500' : 'bg-slate-200'}`}
+                      style={{ height: `${Math.max((stat.count / maxCount) * 60, 8)}px` }}
+                    />
+                  </div>
+                  <span className={`text-xs mt-2 ${stat.isToday ? 'text-amber-600 font-semibold' : 'text-slate-400'}`}>
+                    {stat.day}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="px-6">
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+            <div className="flex justify-between">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-slate-900">{todayReviews.length}</p>
+                <p className="text-slate-500 text-sm">Today</p>
+              </div>
+              <div className="w-px bg-slate-200" />
+              <div className="text-center">
+                <p className="text-2xl font-bold text-slate-900">{cards.length}</p>
+                <p className="text-slate-500 text-sm">Total Cards</p>
+              </div>
+              <div className="w-px bg-slate-200" />
+              <div className="text-center">
+                <p className="text-2xl font-bold text-slate-900">{decks.length}</p>
+                <p className="text-slate-500 text-sm">Decks</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* All Caught Up */}
+        {dueCards.length === 0 && cards.length > 0 && (
+          <div className="px-6 mt-6">
+            <div className="bg-green-50 rounded-3xl p-8 text-center border border-green-100">
+              <span className="text-5xl mb-4 block">🎉</span>
+              <h3 className="text-green-800 font-semibold text-lg">All caught up!</h3>
+              <p className="text-green-600 text-sm mt-1">No cards due for review</p>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Library View
+  const LibraryView = () => {
+    const [deckTitle, setDeckTitle] = useState('');
+
+    return (
+      <div className="animate-fadeIn pb-24">
+        {/* Header */}
+        <div className="px-6 pt-12 pb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-slate-900">Library</h1>
+          <button
+            onClick={() => setShowAddDeck(true)}
+            className="bg-slate-900 text-white p-3 rounded-2xl shadow-lg shadow-slate-300 hover:bg-slate-800 transition-all"
+          >
+            <Icons.Plus />
+          </button>
+        </div>
+
+        {/* Decks */}
+        <div className="px-6 space-y-4">
+          {decks.length === 0 ? (
+            <div className="bg-white rounded-3xl p-12 text-center shadow-sm border border-slate-100">
+              <span className="text-5xl mb-4 block">📚</span>
+              <h3 className="text-slate-900 font-semibold text-lg mb-2">No decks yet</h3>
+              <p className="text-slate-500 text-sm mb-6">Create your first deck to start learning</p>
+              <button
+                onClick={() => setShowAddDeck(true)}
+                className="bg-amber-500 text-white px-6 py-3 rounded-2xl font-medium hover:bg-amber-600 transition-all"
+              >
+                Create Deck
+              </button>
+            </div>
+          ) : (
+            decks.map(deck => {
+              const deckCards = cards.filter(c => c.deckId === deck.id);
+              const deckDue = deckCards.filter(isDue).length;
+              return (
+                <div key={deck.id} className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                  <div
+                    className="p-5 cursor-pointer hover:bg-slate-50 transition-all"
+                    onClick={() => { setSelectedDeck(deck); setView('deck'); }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-semibold text-slate-900 text-lg">{deck.title}</h3>
+                        <p className="text-slate-500 text-sm mt-1">{deckCards.length} cards</p>
+                      </div>
+                      {deckDue > 0 && (
+                        <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-sm font-medium">
+                          {deckDue} due
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="px-5 py-3 bg-slate-50 flex gap-3 border-t border-slate-100">
+                    <button
+                      onClick={() => startStudy(deck.id)}
+                      disabled={deckDue === 0}
+                      className={`flex-1 py-2.5 rounded-xl font-medium transition-all ${
+                        deckDue > 0
+                          ? 'bg-slate-900 text-white hover:bg-slate-800'
+                          : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      Study
+                    </button>
+                    <button
+                      onClick={() => { setSelectedDeck(deck); setView('deck'); }}
+                      className="px-4 py-2.5 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Add Deck Modal */}
+        {showAddDeck && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4" onClick={() => setShowAddDeck(false)}>
+            <div className="bg-white rounded-3xl p-6 w-full max-w-md animate-fadeIn" onClick={e => e.stopPropagation()}>
+              <h3 className="text-xl font-bold text-slate-900 mb-6">Create New Deck</h3>
+              <input
+                type="text"
+                placeholder="Deck name (e.g., TOEIC Part 5)"
+                value={deckTitle}
+                onChange={e => setDeckTitle(e.target.value)}
+                className="w-full bg-slate-100 rounded-2xl px-5 py-4 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 mb-6"
+                autoFocus
+              />
+              <div className="flex gap-3">
+                <button onClick={() => setShowAddDeck(false)} className="flex-1 py-3 rounded-2xl font-medium text-slate-600 hover:bg-slate-100 transition-all">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { if (deckTitle.trim()) { createDeck(deckTitle.trim()); setDeckTitle(''); } }}
+                  className="flex-1 bg-amber-500 text-white py-3 rounded-2xl font-medium hover:bg-amber-600 transition-all"
+                >
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Deck Detail View
+  const DeckView = () => {
+    const [newCard, setNewCard] = useState({ front: '', back: '', example: '', phonetic: '' });
+    const [csv, setCsv] = useState('');
+
+    if (!selectedDeck) return null;
+    const deckCards = cards.filter(c => c.deckId === selectedDeck.id);
+
+    return (
+      <div className="animate-fadeIn pb-24">
+        {/* Header */}
+        <div className="px-6 pt-12 pb-6">
+          <button onClick={() => setView('library')} className="flex items-center text-slate-500 hover:text-slate-700 mb-4">
+            <Icons.ChevronLeft />
+            <span className="ml-1">Back</span>
+          </button>
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-slate-900">{selectedDeck.title}</h1>
+            <div className="flex gap-2">
+              <button onClick={() => setShowImport(true)} className="p-3 rounded-2xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">
+                <Icons.Upload />
+              </button>
+              <button onClick={() => setShowAddCard(true)} className="p-3 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 transition-all">
+                <Icons.Plus />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Bar */}
+        <div className="px-6 mb-6">
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex justify-between items-center">
+            <span className="text-slate-600">{deckCards.length} cards</span>
+            <span className="text-amber-600 font-medium">{deckCards.filter(isDue).length} due</span>
+            <button
+              onClick={() => startStudy(selectedDeck.id)}
+              disabled={deckCards.filter(isDue).length === 0}
+              className={`px-4 py-2 rounded-xl font-medium transition-all ${
+                deckCards.filter(isDue).length > 0
+                  ? 'bg-slate-900 text-white hover:bg-slate-800'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              Study
+            </button>
+          </div>
+        </div>
+
+        {/* Cards List */}
+        <div className="px-6 space-y-3">
+          {deckCards.length === 0 ? (
+            <div className="bg-white rounded-3xl p-12 text-center shadow-sm border border-slate-100">
+              <span className="text-5xl mb-4 block">✨</span>
+              <h3 className="text-slate-900 font-semibold text-lg mb-2">No cards yet</h3>
+              <p className="text-slate-500 text-sm mb-6">Add vocabulary cards to this deck</p>
+              <div className="flex gap-3 justify-center">
+                <button onClick={() => setShowAddCard(true)} className="bg-amber-500 text-white px-5 py-2.5 rounded-2xl font-medium hover:bg-amber-600 transition-all">
+                  Add Card
+                </button>
+                <button onClick={() => setShowImport(true)} className="bg-slate-100 text-slate-700 px-5 py-2.5 rounded-2xl font-medium hover:bg-slate-200 transition-all">
+                  Import CSV
+                </button>
+              </div>
+            </div>
+          ) : (
+            deckCards.map(card => (
+              <div key={card.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <p className="font-semibold text-slate-900">{card.front}</p>
+                    {card.phonetic && <p className="text-slate-400 text-sm">{card.phonetic}</p>}
+                    <p className="text-slate-600 mt-1">{card.back}</p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-4">
+                    <span className={`text-xs px-2 py-1 rounded-lg ${isDue(card) ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+                      {isDue(card) ? 'Due' : formatDate(card.nextReviewAt)}
+                    </span>
+                    <button onClick={() => deleteCard(card.id)} className="p-2 text-slate-400 hover:text-red-500 transition-all">
+                      <Icons.Trash />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Add Card Modal */}
+        {showAddCard && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4" onClick={() => setShowAddCard(false)}>
+            <div className="bg-white rounded-3xl p-6 w-full max-w-md max-h-[90vh] overflow-auto animate-fadeIn" onClick={e => e.stopPropagation()}>
+              <h3 className="text-xl font-bold text-slate-900 mb-6">Add New Card</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm text-slate-500 mb-1 block">Word *</label>
+                  <input type="text" placeholder="e.g., accomplish" value={newCard.front} onChange={e => setNewCard({...newCard, front: e.target.value})} className="w-full bg-slate-100 rounded-2xl px-5 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-500 mb-1 block">Meaning (Thai) *</label>
+                  <input type="text" placeholder="e.g., ทำให้สำเร็จ" value={newCard.back} onChange={e => setNewCard({...newCard, back: e.target.value})} className="w-full bg-slate-100 rounded-2xl px-5 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-500 mb-1 block">Example</label>
+                  <input type="text" placeholder="e.g., We accomplished our goals." value={newCard.example} onChange={e => setNewCard({...newCard, example: e.target.value})} className="w-full bg-slate-100 rounded-2xl px-5 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-500 mb-1 block">Phonetic</label>
+                  <input type="text" placeholder="e.g., /əˈkɑːmplɪʃ/" value={newCard.phonetic} onChange={e => setNewCard({...newCard, phonetic: e.target.value})} className="w-full bg-slate-100 rounded-2xl px-5 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setShowAddCard(false)} className="flex-1 py-3 rounded-2xl font-medium text-slate-600 hover:bg-slate-100 transition-all">Cancel</button>
+                <button onClick={() => { if (newCard.front && newCard.back) { addCard(selectedDeck.id, newCard); setNewCard({front:'',back:'',example:'',phonetic:''}); setShowAddCard(false); } }} className="flex-1 bg-amber-500 text-white py-3 rounded-2xl font-medium hover:bg-amber-600 transition-all">Add</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Import Modal */}
+        {showImport && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4" onClick={() => setShowImport(false)}>
+            <div className="bg-white rounded-3xl p-6 w-full max-w-md animate-fadeIn" onClick={e => e.stopPropagation()}>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Import from CSV</h3>
+              <p className="text-slate-500 text-sm mb-4">Format: word,meaning_th,example,phonetic</p>
+              <textarea
+                placeholder={`word,meaning_th,example\naccomplish,ทำให้สำเร็จ,We accomplished our goals.`}
+                value={csv}
+                onChange={e => setCsv(e.target.value)}
+                className="w-full bg-slate-100 rounded-2xl px-5 py-4 text-slate-900 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 h-40 resize-none"
+              />
+              <div className="flex gap-3 mt-4">
+                <button onClick={() => setShowImport(false)} className="flex-1 py-3 rounded-2xl font-medium text-slate-600 hover:bg-slate-100 transition-all">Cancel</button>
+                <button onClick={() => { if (csv.trim()) importCards(selectedDeck.id, csv); setCsv(''); }} className="flex-1 bg-amber-500 text-white py-3 rounded-2xl font-medium hover:bg-amber-600 transition-all">Import</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Study View
+  const StudyView = () => {
+    if (!studyCards.length) return null;
+    const card = studyCards[currentCardIndex];
+    const progress = ((currentCardIndex + 1) / studyCards.length) * 100;
+
+    return (
+      <div className="min-h-screen bg-cream flex flex-col animate-fadeIn">
+        {/* Header */}
+        <div className="px-6 pt-12 pb-4 flex items-center justify-between">
+          <button onClick={() => setView('home')} className="p-2 -ml-2 text-slate-500 hover:text-slate-700">
+            <Icons.X />
+          </button>
+          <span className="text-slate-500 text-sm font-medium">{currentCardIndex + 1} / {studyCards.length}</span>
+          <div className="w-10" />
+        </div>
+
+        {/* Progress Bar */}
+        <div className="px-6 mb-6">
+          <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+            <div className="h-full bg-amber-500 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+
+        {/* Flashcard */}
+        <div className="flex-1 px-6 flex flex-col">
+          <div
+            onClick={() => !showAnswer && setShowAnswer(true)}
+            className={`bg-white rounded-3xl shadow-lg shadow-slate-200 p-8 flex-1 flex flex-col items-center justify-center text-center mb-6 ${!showAnswer ? 'cursor-pointer hover:shadow-xl transition-all' : ''} ${showAnswer ? 'card-flip' : ''}`}
+          >
+            {!showAnswer ? (
+              <>
+                <h2 className="text-4xl font-bold text-slate-900 mb-2">{card.front}</h2>
+                {card.phonetic && <p className="text-slate-400 text-lg">{card.phonetic}</p>}
+                <p className="text-slate-400 mt-8 text-sm">Tap to reveal</p>
+              </>
+            ) : (
+              <>
+                <p className="text-slate-400 text-sm mb-2">{card.front}</p>
+                <h2 className="text-3xl font-bold text-slate-900 mb-4">{card.back}</h2>
+                {card.example && <p className="text-slate-500 italic">"{card.example}"</p>}
+              </>
+            )}
+          </div>
+
+          {/* AI Buttons & Content */}
+          {showAnswer && (
+            <>
+              <div className="flex gap-2 mb-4 overflow-x-auto hide-scrollbar pb-2">
+                <button onClick={generateExample} disabled={aiLoading} className="flex-shrink-0 flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-2xl text-sm font-medium hover:bg-slate-50 transition-all disabled:opacity-50">
+                  <Icons.Sparkles /> Example
+                </button>
+                <button onClick={explainMeaning} disabled={aiLoading} className="flex-shrink-0 flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-2xl text-sm font-medium hover:bg-slate-50 transition-all disabled:opacity-50">
+                  💡 Explain
+                </button>
+                <button onClick={getFamiliarVocab} disabled={aiLoading} className="flex-shrink-0 flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-2xl text-sm font-medium hover:bg-slate-50 transition-all disabled:opacity-50">
+                  🔗 Related
+                </button>
+              </div>
+
+              {(aiContent.example || aiContent.explanation || aiContent.familiarVocab) && (
+                <div className="bg-white rounded-2xl p-4 mb-4 border border-slate-100 space-y-3">
+                  {aiContent.example && (
+                    <div><span className="text-amber-600 text-sm font-medium">Example:</span><p className="text-slate-600 text-sm mt-0.5">{aiContent.example}</p></div>
+                  )}
+                  {aiContent.explanation && (
+                    <div><span className="text-amber-600 text-sm font-medium">Explanation:</span><p className="text-slate-600 text-sm mt-0.5">{aiContent.explanation}</p></div>
+                  )}
+                  {aiContent.familiarVocab && (
+                    <div>
+                      <span className="text-amber-600 text-sm font-medium">Related Words:</span>
+                      <div className="mt-2 space-y-1.5">
+                        {aiContent.familiarVocab.split('\n').filter(l => l.trim()).map((line, i) => (
+                          <p key={i} className="text-slate-600 text-sm bg-slate-50 px-3 py-2 rounded-xl">{line}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Review Buttons */}
+              <div className="grid grid-cols-4 gap-2 pb-8">
+                {[
+                  { q: 0, label: 'Again', color: 'bg-red-50 text-red-600 border-red-100', days: '1d' },
+                  { q: 1, label: 'Hard', color: 'bg-orange-50 text-orange-600 border-orange-100', days: '1d' },
+                  { q: 2, label: 'Good', color: 'bg-green-50 text-green-600 border-green-100', days: `${INTERVALS[Math.min((card.intervalIndex||0)+1,3)]}d` },
+                  { q: 3, label: 'Easy', color: 'bg-blue-50 text-blue-600 border-blue-100', days: `${INTERVALS[Math.min((card.intervalIndex||0)+2,3)]}d` },
+                ].map(btn => (
+                  <button
+                    key={btn.q}
+                    onClick={() => handleReview(btn.q)}
+                    className={`py-4 rounded-2xl border font-medium flex flex-col items-center transition-all active:scale-95 ${btn.color}`}
+                  >
+                    <span className="text-sm">{btn.label}</span>
+                    <span className="text-xs opacity-60">{btn.days}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Settings Modal
+  const SettingsModal = () => (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4" onClick={() => setShowSettings(false)}>
+      <div className="bg-white rounded-3xl p-6 w-full max-w-md animate-fadeIn" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold text-slate-900">Settings</h3>
+          <button onClick={() => setShowSettings(false)} className="p-2 text-slate-400 hover:text-slate-600">
+            <Icons.X />
+          </button>
+        </div>
+
+        <div className="bg-amber-50 rounded-2xl p-4 mb-6 border border-amber-100">
+          <p className="text-amber-800 font-medium text-sm">🎉 Free Google Gemini API!</p>
+          <p className="text-amber-700 text-xs mt-1">No credit card required</p>
+        </div>
+
+        <div className="mb-4">
+          <label className="text-sm text-slate-500 mb-2 block">Gemini API Key</label>
+          <input
+            type="password"
+            placeholder="AIza... or gen-lang-client-..."
+            value={apiKey}
+            onChange={e => setApiKey(e.target.value)}
+            className="w-full bg-slate-100 rounded-2xl px-5 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+        </div>
+
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-xl mb-6 ${apiKey ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+          {apiKey ? <Icons.Check /> : <Icons.X />}
+          <span className="text-sm">{apiKey ? 'API Key configured' : 'No API Key set'}</span>
+        </div>
+
+        <div className="bg-slate-50 rounded-2xl p-4 mb-6">
+          <p className="text-slate-700 font-medium text-sm mb-2">How to get API Key:</p>
+          <ol className="text-slate-500 text-xs space-y-1 list-decimal list-inside">
+            <li>Go to <a href="https://aistudio.google.com/apikey" target="_blank" className="text-amber-600 underline">aistudio.google.com/apikey</a></li>
+            <li>Click "Create API key"</li>
+            <li>Copy and paste here</li>
+          </ol>
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={testApiKey} disabled={aiLoading} className="flex-1 py-3 rounded-2xl font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all disabled:opacity-50">
+            {aiLoading ? '...' : 'Test Key'}
+          </button>
+          <button onClick={() => saveApiKey(apiKey)} className="flex-1 bg-amber-500 text-white py-3 rounded-2xl font-medium hover:bg-amber-600 transition-all">
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Notification Toast
+  const Toast = () => notification && (
+    <div className={`fixed top-6 left-4 right-4 z-50 animate-fadeIn`}>
+      <div className={`max-w-md mx-auto px-5 py-3 rounded-2xl shadow-lg ${
+        notification.type === 'error' ? 'bg-red-500 text-white' : 
+        notification.type === 'info' ? 'bg-blue-500 text-white' : 
+        'bg-slate-900 text-white'
+      }`}>
+        {notification.message}
+      </div>
+    </div>
+  );
+
+  // ============================================
+  // RENDER
+  // ============================================
+  return (
+    <div className="min-h-screen bg-cream">
+      {view === 'study' ? (
+        <StudyView />
+      ) : (
+        <>
+          <div className="max-w-lg mx-auto">
+            {view === 'home' && <HomeView />}
+            {view === 'library' && <LibraryView />}
+            {view === 'deck' && <DeckView />}
+          </div>
+          <BottomNav />
+        </>
+      )}
+      {showSettings && <SettingsModal />}
+      <Toast />
+    </div>
+  );
+}
+
+ReactDOM.render(<VocabLabApp />, document.getElementById('root'));
+  </script>
+</body>
+</html>
