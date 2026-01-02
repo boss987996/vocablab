@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VocabLab - TOEIC Vocabulary</title>
+  <meta name="description" content="Master TOEIC vocabulary with spaced repetition and AI assistance">
+  <meta name="theme-color" content="#F8FAFC">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            cream: '#F8FAFC',
+            primary: '#D97706',
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.3s ease-out',
+            'slide-up': 'slideUp 0.4s ease-out',
+            'scale-in': 'scaleIn 0.2s ease-out',
+            'progress': 'progress 1s ease-out forwards',
+          },
+          keyframes: {
+            fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+            slideUp: { '0%': { opacity: '0', transform: 'translateY(20px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+            scaleIn: { '0%': { opacity: '0', transform: 'scale(0.95)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
+            progress: { '0%': { strokeDashoffset: '100' }, '100%': { strokeDashoffset: 'var(--progress)' } },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { background: #F8FAFC; overscroll-behavior: none; }
+    .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 20px); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+// ============================================
+// VOCABLAB v3 - Production Ready
+// Clean & Minimalist UI with Tailwind CSS
+// ============================================
+
+const { useState, useEffect, useMemo, useCallback } = React;
+
+// ============================================
+// CONFIGURATION & CONSTANTS
+// ============================================
+const CONFIG = {
+  INTERVALS: [1, 3, 7, 30],
+  MIN_EASE: 1.3,
+  DEFAULT_EASE: 2.5,
+  DAILY_GOAL: 20,
+};
+
+// Starter Deck - Pre-filled for new users
+const STARTER_DECK = {
+  id: 'starter_deck_001',
+  title: 'TOEIC Essential',
+  createdAt: new Date().toISOString(),
+};
+
+const STARTER_CARDS = [
+  { front: 'accomplish', back: 'ทำให้สำเร็จ, บรรลุผล', phonetic: '/əˈkɑːmplɪʃ/', example: 'We accomplished all our goals this quarter.' },
+  { front: 'negotiate', back: 'เจรจาต่อรอง', phonetic: '/nɪˈɡoʊʃieɪt/', example: 'The managers will negotiate a new contract.' },
+  { front: 'deadline', back: 'กำหนดเวลา, เส้นตาย', phonetic: '/ˈdedlaɪn/', example: 'Please submit the report before the deadline.' },
+  { front: 'implement', back: 'ดำเนินการ, นำไปปฏิบัติ', phonetic: '/ˈɪmpləment/', example: 'We will implement the new policy next month.' },
+  { front: 'collaborate', back: 'ร่วมมือ, ทำงานร่วมกัน', phonetic: '/kəˈlæbəreɪt/', example: 'Our teams collaborate on international projects.' },
+];
+
+// ============================================
+// LUCIDE ICONS COMPONENT
+// ============================================
+const Icon = ({ name, size = 24, className = '' }) => {
+  const ref = React.useRef(null);
+  useEffect(() => {
+    if (ref.current && window.lucide) {
+      ref.current.innerHTML = '';
+      const icon = window.lucide.icons[name];
+      if (icon) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', size);
+        svg.setAttribute('height', size);
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '2');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.innerHTML = icon[2];
+        ref.current.appendChild(svg);
+      }
+    }
+  }, [name, size]);
+  return <span ref={ref} className={`inline-flex items-center justify-center ${className}`} />;
+};
+
+// ============================================
+// DATABASE LAYER (localStorage)
+// ============================================
+const DB = {
+  get: (key, fallback = null) => {
+    try {
+      const item = localStorage.getItem(`vocablab_${key}`);
+      return item ? JSON.parse(item) : fallback;
+    } catch { return fallback; }
+  },
+  set: (key, value) => {
+    try { localStorage.setItem(`vocablab_${key}`, JSON.stringify(value)); }
+    catch (e) { console.error('Storage error:', e); }
+  },
+  getApiKey: () => localStorage.getItem('vocablab_api_key') || '',
+  setApiKey: (key) => localStorage.setItem('vocablab_api_key', key),
+};
+
+// ============================================
+// TEXT-TO-SPEECH HELPER
+// ============================================
+const speak = (text, lang = 'en-US') => {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = lang;
+  utterance.rate = 0.85;
+  utterance.pitch = 1;
+  // Try to find English voice
+  const voices = window.speechSynthesis.getVoices();
+  const enVoice = voices.find(v => v.lang.startsWith('en'));
+  if (enVoice) utterance.voice = enVoice;
+  window.speechSynthesis.speak(utterance);
+};
+
+// Load voices
+if (typeof window !== 'undefined' && window.speechSynthesis) {
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
+
+// ============================================
+// AI SERVICE (Gemini API)
+// ============================================
+const AIService = {
+  cache: new Map(),
+  
+  async call(prompt, apiKey) {
+    if (!apiKey) throw new Error('API Key required');
+    
+    const models = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+    
+    for (const model of models) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.7, maxOutputTokens: 150 }
+            })
+          }
+        );
+        
+        if (res.ok) {
+          const data = await res.json();
+          return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+        }
+        
+        const err = await res.json();
+        if (err.error?.message?.includes('quota') || err.error?.message?.includes('not found')) continue;
+        throw new Error(err.error?.message || 'API Error');
+      } catch (e) {
+        if (model === models[models.length - 1]) throw e;
+      }
+    }
+    throw new Error('All models failed');
+  },
+  
+  async generateExample(word, meaning, apiKey) {
+    const key = `ex_${word}`;
+    if (this.cache.has(key)) return this.cache.get(key);
+    
+    const prompt = `Create ONE natural example sentence (10-15 words) using "${word}" in a business/workplace context. Return ONLY the sentence.`;
+    
+    try {
+      const result = await this.call(prompt, apiKey);
+      const clean = result.replace(/^["']|["']$/g, '').replace(/^(Here|Example|Sentence).*?:/i, '').trim();
+      this.cache.set(key, clean);
+      return clean;
+    } catch {
+      return `The team needs to ${word.toLowerCase()} the project requirements.`;
+    }
+  }
+};
+
+// ============================================
+// SRS ALGORITHM
+// ============================================
+const SRS = {
+  calculate(card, quality) {
+    let { repetitions = 0, intervalIndex = 0, easeFactor = CONFIG.DEFAULT_EASE } = card;
+    
+    if (quality < 2) {
+      repetitions = 0;
+      intervalIndex = 0;
+    } else {
+      repetitions++;
+      if (repetitions === 1) intervalIndex = 0;
+      else if (repetitions === 2) intervalIndex = 1;
+      else intervalIndex = Math.min(intervalIndex + 1, CONFIG.INTERVALS.length - 1);
+    }
+    
+    const q = quality + 2;
+    easeFactor = Math.max(CONFIG.MIN_EASE, easeFactor + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)));
+    if (quality === 3) intervalIndex = Math.min(intervalIndex + 1, CONFIG.INTERVALS.length - 1);
+    
+    const days = CONFIG.INTERVALS[intervalIndex];
+    const nextReview = new Date();
+    nextReview.setDate(nextReview.getDate() + days);
+    
+    return {
+      repetitions,
+      intervalIndex,
+      easeFactor: Math.round(easeFactor * 100) / 100,
+      nextReviewAt: nextReview.toISOString(),
+      lastInterval: days
+    };
+  },
+  
+  isDue(card) {
+    if (!card.nextReviewAt) return true;
+    return new Date(card.nextReviewAt) <= new Date();
+  }
+};
+
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
+const generateId = () => `${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 5)}`;
+const formatDate = (d) => new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+
+// ============================================
+// CIRCULAR PROGRESS COMPONENT
+// ============================================
+const CircularProgress = ({ value, max, size = 120, strokeWidth = 8 }) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const percent = Math.min((value / max) * 100, 100);
+  const offset = circumference - (percent / 100) * circumference;
+  
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <svg width={size} height={size} className="transform -rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="#E2E8F0"
+          strokeWidth={strokeWidth}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="#D97706"
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          className="transition-all duration-1000 ease-out"
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center justify-center">
+        <span className="text-3xl font-bold text-slate-900">{value}</span>
+        <span className="text-xs text-slate-500">/ {max}</span>
+      </div>
+    </div>
+  );
+};
+
+// ============================================
+// MAIN APP COMPONENT
+// ============================================
+function VocabLabApp() {
+  // ============================================
+  // STATE
+  // ============================================
+  const [view, setView] = useState('home');
+  const [decks, setDecks] = useState([]);
+  const [cards, setCards] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [stats, setStats] = useState({ streak: 0, lastStudyDate: null, totalReviews: 0 });
+  const [apiKey, setApiKey] = useState('');
+  
+  const [selectedDeck, setSelectedDeck] = useState(null);
+  const [studyCards, setStudyCards] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [generatedExample, setGeneratedExample] = useState('');
+  
+  const [showAddDeck, setShowAddDeck] = useState(false);
+  const [showAddCard, setShowAddCard] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  // ============================================
+  // INITIALIZATION
+  // ============================================
+  useEffect(() => {
+    const savedDecks = DB.get('decks', []);
+    const savedCards = DB.get('cards', []);
+    const savedReviews = DB.get('reviews', []);
+    const savedStats = DB.get('stats', { streak: 0, lastStudyDate: null, totalReviews: 0 });
+    
+    // Initialize with starter deck if empty
+    if (savedDecks.length === 0) {
+      const starterCards = STARTER_CARDS.map(c => ({
+        ...c,
+        id: generateId(),
+        deckId: STARTER_DECK.id,
+        repetitions: 0,
+        intervalIndex: 0,
+        easeFactor: CONFIG.DEFAULT_EASE,
+        nextReviewAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
+      }));
+      
+      setDecks([STARTER_DECK]);
+      setCards(starterCards);
+      DB.set('decks', [STARTER_DECK]);
+      DB.set('cards', starterCards);
+    } else {
+      setDecks(savedDecks);
+      setCards(savedCards);
+    }
+    
+    setReviews(savedReviews);
+    setStats(savedStats);
+    setApiKey(DB.getApiKey());
+  }, []);
+
+  // ============================================
+  // AUTO-SAVE
+  // ============================================
+  useEffect(() => { if (decks.length) DB.set('decks', decks); }, [decks]);
+  useEffect(() => { if (cards.length) DB.set('cards', cards); }, [cards]);
+  useEffect(() => { DB.set('reviews', reviews); }, [reviews]);
+  useEffect(() => { DB.set('stats', stats); }, [stats]);
+
+  // ============================================
+  // COMPUTED VALUES
+  // ============================================
+  const dueCards = useMemo(() => cards.filter(SRS.isDue), [cards]);
+  const todayReviews = useMemo(() => {
+    const today = new Date().toDateString();
+    return reviews.filter(r => new Date(r.reviewedAt).toDateString() === today);
+  }, [reviews]);
+
+  // ============================================
+  // HELPERS
+  // ============================================
+  const notify = useCallback((msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  // ============================================
+  // DECK OPERATIONS
+  // ============================================
+  const createDeck = (title) => {
+    const deck = { id: generateId(), title, createdAt: new Date().toISOString() };
+    setDecks(prev => [...prev, deck]);
+    notify(`"${title}" created`);
+    setShowAddDeck(false);
+  };
+
+  const deleteDeck = (deckId) => {
+    setDecks(prev => prev.filter(d => d.id !== deckId));
+    setCards(prev => prev.filter(c => c.deckId !== deckId));
+    notify('Deck deleted');
+  };
+
+  // ============================================
+  // CARD OPERATIONS
+  // ============================================
+  const addCard = (deckId, data) => {
+    const card = {
+      id: generateId(),
+      deckId,
+      ...data,
+      repetitions: 0,
+      intervalIndex: 0,
+      easeFactor: CONFIG.DEFAULT_EASE,
+      nextReviewAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    };
+    setCards(prev => [...prev, card]);
+    notify('Card added');
+    setShowAddCard(false);
+  };
+
+  const deleteCard = (cardId) => {
+    setCards(prev => prev.filter(c => c.id !== cardId));
+    notify('Card deleted');
+  };
+
+  const updateCard = (cardId, updates) => {
+    setCards(prev => prev.map(c => c.id === cardId ? { ...c, ...updates } : c));
+  };
+
+  // ============================================
+  // STUDY OPERATIONS
+  // ============================================
+  const startStudy = (deckId = null) => {
+    let toStudy = deckId 
+      ? cards.filter(c => c.deckId === deckId && SRS.isDue(c))
+      : dueCards;
+    
+    toStudy = [...toStudy].sort(() => Math.random() - 0.5);
+    
+    if (!toStudy.length) {
+      notify('No cards due!', 'info');
+      return;
+    }
+    
+    setStudyCards(toStudy);
+    setCurrentIndex(0);
+    setFlipped(false);
+    setGeneratedExample('');
+    setView('study');
+  };
+
+  const handleReview = (quality) => {
+    const card = studyCards[currentIndex];
+    const updates = SRS.calculate(card, quality);
+    updateCard(card.id, updates);
+    
+    // Record review
+    setReviews(prev => [...prev, {
+      id: generateId(),
+      cardId: card.id,
+      quality,
+      reviewedAt: new Date().toISOString()
+    }]);
+    
+    // Update stats
+    const today = new Date().toDateString();
+    setStats(prev => {
+      const newStats = { ...prev, totalReviews: prev.totalReviews + 1 };
+      if (prev.lastStudyDate !== today) {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        newStats.streak = prev.lastStudyDate === yesterday.toDateString() ? prev.streak + 1 : 1;
+        newStats.lastStudyDate = today;
+      }
+      return newStats;
+    });
+    
+    // Next card
+    if (currentIndex < studyCards.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setFlipped(false);
+      setGeneratedExample('');
+    } else {
+      notify('Session complete! 🎉');
+      setView('home');
+    }
+  };
+
+  // ============================================
+  // AI HELP
+  // ============================================
+  const handleAIHelp = async () => {
+    const card = studyCards[currentIndex];
+    if (card.example || generatedExample) return;
+    
+    if (!apiKey) {
+      notify('Set API Key first', 'error');
+      setShowSettings(true);
+      return;
+    }
+    
+    setAiLoading(true);
+    try {
+      const example = await AIService.generateExample(card.front, card.back, apiKey);
+      setGeneratedExample(example);
+      updateCard(card.id, { example });
+    } catch (e) {
+      notify(e.message, 'error');
+    }
+    setAiLoading(false);
+  };
+
+  // ============================================
+  // API KEY
+  // ============================================
+  const saveApiKey = () => {
+    DB.setApiKey(apiKey);
+    notify('API Key saved');
+    setShowSettings(false);
+  };
+
+  const testApiKey = async () => {
+    if (!apiKey) {
+      notify('Enter API Key first', 'error');
+      return;
+    }
+    setAiLoading(true);
+    try {
+      await AIService.call('Say hi', apiKey);
+      notify('API Key works! ✓');
+    } catch (e) {
+      notify(e.message, 'error');
+    }
+    setAiLoading(false);
+  };
+
+  // ============================================
+  // VIEWS
+  // ============================================
+
+  // HOME / DASHBOARD
+  const HomeView = () => {
+    const progress = Math.min(todayReviews.length, CONFIG.DAILY_GOAL);
+    const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const today = new Date();
+    
+    const weekData = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (6 - i));
+      return {
+        day: weekDays[d.getDay()],
+        count: reviews.filter(r => new Date(r.reviewedAt).toDateString() === d.toDateString()).length,
+        isToday: i === 6
+      };
+    });
+    
+    const maxCount = Math.max(...weekData.map(d => d.count), 1);
+
+    return (
+      <div className="animate-fade-in pb-28 px-5">
+        {/* Header */}
+        <header className="pt-14 pb-6">
+          <p className="text-slate-500 text-sm font-medium">Welcome back</p>
+          <h1 className="text-2xl font-bold text-slate-900 mt-1">VocabLab</h1>
+        </header>
+
+        {/* Daily Goal Card */}
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 mb-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Daily Goal</h2>
+              <p className="text-slate-500 text-sm mt-1">
+                {progress >= CONFIG.DAILY_GOAL ? 'Goal reached! 🎉' : `${CONFIG.DAILY_GOAL - progress} cards to go`}
+              </p>
+              
+              {/* Streak */}
+              <div className="flex items-center gap-2 mt-4">
+                <div className="flex items-center gap-1.5 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-full">
+                  <Icon name="flame" size={16} />
+                  <span className="text-sm font-semibold">{stats.streak} day streak</span>
+                </div>
+              </div>
+            </div>
+            
+            <CircularProgress value={progress} max={CONFIG.DAILY_GOAL} />
+          </div>
+        </div>
+
+        {/* Study Button */}
+        {dueCards.length > 0 && (
+          <button
+            onClick={() => startStudy()}
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-2xl font-semibold text-lg shadow-lg shadow-slate-300/50 transition-all active:scale-[0.98] flex items-center justify-center gap-3 mb-5"
+          >
+            <Icon name="play" size={22} />
+            Study Now ({dueCards.length} due)
+          </button>
+        )}
+
+        {/* All Caught Up */}
+        {dueCards.length === 0 && cards.length > 0 && (
+          <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-6 text-center mb-5">
+            <span className="text-4xl mb-3 block">🎉</span>
+            <h3 className="text-emerald-800 font-semibold">All caught up!</h3>
+            <p className="text-emerald-600 text-sm mt-1">No cards due for review</p>
+          </div>
+        )}
+
+        {/* Week Activity */}
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 mb-5">
+          <h3 className="text-slate-900 font-semibold mb-4">This Week</h3>
+          <div className="flex justify-between items-end h-20">
+            {weekData.map((d, i) => (
+              <div key={i} className="flex flex-col items-center flex-1">
+                <div className="w-full max-w-[24px] flex flex-col items-center">
+                  {d.count > 0 && <span className="text-[10px] font-semibold text-slate-600 mb-1">{d.count}</span>}
+                  <div
+                    className={`w-full rounded-md transition-all ${d.isToday ? 'bg-amber-500' : 'bg-slate-200'}`}
+                    style={{ height: `${Math.max((d.count / maxCount) * 48, 6)}px` }}
+                  />
+                </div>
+                <span className={`text-[10px] mt-2 font-medium ${d.isToday ? 'text-amber-600' : 'text-slate-400'}`}>
+                  {d.day}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: 'Total Cards', value: cards.length, icon: 'layers' },
+            { label: 'Decks', value: decks.length, icon: 'folder' },
+            { label: 'Reviews', value: stats.totalReviews, icon: 'check-circle' },
+          ].map((stat, i) => (
+            <div key={i} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
+              <div className="flex justify-center mb-2 text-slate-400">
+                <Icon name={stat.icon} size={18} />
+              </div>
+              <p className="text-xl font-bold text-slate-900">{stat.value}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // LIBRARY VIEW
+  const LibraryView = () => (
+    <div className="animate-fade-in pb-28 px-5">
+      <header className="pt-14 pb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-slate-900">Library</h1>
+        <button
+          onClick={() => setShowAddDeck(true)}
+          className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-slate-800 transition-all"
+        >
+          <Icon name="plus" size={20} />
+        </button>
+      </header>
+
+      <div className="space-y-3">
+        {decks.length === 0 ? (
+          <div className="bg-white rounded-3xl p-10 text-center shadow-sm border border-slate-100">
+            <div className="text-5xl mb-4">📚</div>
+            <h3 className="text-slate-900 font-semibold text-lg">No decks yet</h3>
+            <p className="text-slate-500 text-sm mt-2 mb-6">Create your first deck to start learning</p>
+            <button
+              onClick={() => setShowAddDeck(true)}
+              className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2.5 rounded-xl font-medium transition-all"
+            >
+              Create Deck
+            </button>
+          </div>
+        ) : (
+          decks.map(deck => {
+            const deckCards = cards.filter(c => c.deckId === deck.id);
+            const due = deckCards.filter(SRS.isDue).length;
+            
+            return (
+              <div key={deck.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div
+                  onClick={() => { setSelectedDeck(deck); setView('deck'); }}
+                  className="p-4 cursor-pointer hover:bg-slate-50 transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600">
+                        <Icon name="book-open" size={18} />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-slate-900">{deck.title}</h3>
+                        <p className="text-slate-500 text-sm">{deckCards.length} cards</p>
+                      </div>
+                    </div>
+                    {due > 0 && (
+                      <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-sm font-medium">
+                        {due} due
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="px-4 py-3 bg-slate-50 flex gap-2 border-t border-slate-100">
+                  <button
+                    onClick={() => startStudy(deck.id)}
+                    disabled={due === 0}
+                    className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${
+                      due > 0 ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    Study
+                  </button>
+                  <button
+                    onClick={() => { setSelectedDeck(deck); setView('deck'); }}
+                    className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-200 transition-all"
+                  >
+                    View
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  // DECK DETAIL VIEW
+  const DeckDetailView = () => {
+    const [newCard, setNewCard] = useState({ front: '', back: '', phonetic: '' });
+    
+    if (!selectedDeck) return null;
+    const deckCards = cards.filter(c => c.deckId === selectedDeck.id);
+    const due = deckCards.filter(SRS.isDue).length;
+
+    return (
+      <div className="animate-fade-in pb-28 px-5">
+        <header className="pt-14 pb-4">
+          <button onClick={() => setView('library')} className="flex items-center text-slate-500 hover:text-slate-700 mb-3 -ml-1">
+            <Icon name="chevron-left" size={20} />
+            <span className="text-sm ml-1">Back</span>
+          </button>
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-slate-900">{selectedDeck.title}</h1>
+            <button
+              onClick={() => setShowAddCard(true)}
+              className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-slate-800 transition-all"
+            >
+              <Icon name="plus" size={20} />
+            </button>
+          </div>
+        </header>
+
+        {/* Stats Bar */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center justify-between mb-5">
+          <div className="flex items-center gap-4">
+            <div className="text-center">
+              <p className="text-lg font-bold text-slate-900">{deckCards.length}</p>
+              <p className="text-xs text-slate-500">Cards</p>
+            </div>
+            <div className="w-px h-8 bg-slate-200" />
+            <div className="text-center">
+              <p className="text-lg font-bold text-amber-600">{due}</p>
+              <p className="text-xs text-slate-500">Due</p>
+            </div>
+          </div>
+          <button
+            onClick={() => startStudy(selectedDeck.id)}
+            disabled={due === 0}
+            className={`px-5 py-2 rounded-xl font-medium transition-all ${
+              due > 0 ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            }`}
+          >
+            Study
+          </button>
+        </div>
+
+        {/* Cards List */}
+        <div className="space-y-2">
+          {deckCards.length === 0 ? (
+            <div className="bg-white rounded-3xl p-10 text-center shadow-sm border border-slate-100">
+              <div className="text-4xl mb-3">✨</div>
+              <h3 className="text-slate-900 font-semibold">No cards yet</h3>
+              <p className="text-slate-500 text-sm mt-1 mb-4">Add vocabulary to this deck</p>
+              <button
+                onClick={() => setShowAddCard(true)}
+                className="bg-amber-500 hover:bg-amber-600 text-white px-5 py-2 rounded-xl font-medium transition-all"
+              >
+                Add Card
+              </button>
+            </div>
+          ) : (
+            deckCards.map(card => (
+              <div key={card.id} className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold text-slate-900">{card.front}</h4>
+                      <button
+                        onClick={() => speak(card.front)}
+                        className="text-slate-400 hover:text-amber-500 transition-colors p-1"
+                      >
+                        <Icon name="volume-2" size={16} />
+                      </button>
+                    </div>
+                    {card.phonetic && <p className="text-slate-400 text-xs">{card.phonetic}</p>}
+                    <p className="text-slate-600 text-sm mt-1">{card.back}</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className={`text-xs px-2 py-1 rounded-md ${
+                      SRS.isDue(card) ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {SRS.isDue(card) ? 'Due' : formatDate(card.nextReviewAt)}
+                    </span>
+                    <button
+                      onClick={() => deleteCard(card.id)}
+                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                    >
+                      <Icon name="trash-2" size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Add Card Modal */}
+        {showAddCard && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4" onClick={() => setShowAddCard(false)}>
+            <div className="bg-white rounded-3xl p-6 w-full max-w-md animate-slide-up" onClick={e => e.stopPropagation()}>
+              <h3 className="text-xl font-bold text-slate-900 mb-5">Add New Card</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-medium text-slate-500 mb-1.5 block">WORD</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., accomplish"
+                    value={newCard.front}
+                    onChange={e => setNewCard({ ...newCard, front: e.target.value })}
+                    className="w-full bg-slate-100 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 mb-1.5 block">MEANING (THAI)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., ทำให้สำเร็จ"
+                    value={newCard.back}
+                    onChange={e => setNewCard({ ...newCard, back: e.target.value })}
+                    className="w-full bg-slate-100 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 mb-1.5 block">PHONETIC (OPTIONAL)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., /əˈkɑːmplɪʃ/"
+                    value={newCard.phonetic}
+                    onChange={e => setNewCard({ ...newCard, phonetic: e.target.value })}
+                    className="w-full bg-slate-100 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setShowAddCard(false)} className="flex-1 py-3 rounded-xl font-medium text-slate-600 hover:bg-slate-100 transition-all">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (newCard.front && newCard.back) {
+                      addCard(selectedDeck.id, newCard);
+                      setNewCard({ front: '', back: '', phonetic: '' });
+                    }
+                  }}
+                  className="flex-1 bg-amber-500 text-white py-3 rounded-xl font-medium hover:bg-amber-600 transition-all"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // STUDY VIEW
+  const StudyView = () => {
+    if (!studyCards.length) return null;
+    
+    const card = studyCards[currentIndex];
+    const progress = ((currentIndex + 1) / studyCards.length) * 100;
+    const example = card.example || generatedExample;
+
+    return (
+      <div className="min-h-screen bg-cream flex flex-col animate-fade-in">
+        {/* Header */}
+        <header className="px-5 pt-14 pb-4 flex items-center justify-between">
+          <button onClick={() => setView('home')} className="p-2 -ml-2 text-slate-500 hover:text-slate-700">
+            <Icon name="x" size={22} />
+          </button>
+          <span className="text-slate-500 text-sm font-medium">{currentIndex + 1} / {studyCards.length}</span>
+          <div className="w-10" />
+        </header>
+
+        {/* Progress */}
+        <div className="px-5 mb-6">
+          <div className="h-1 bg-slate-200 rounded-full overflow-hidden">
+            <div className="h-full bg-amber-500 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+
+        {/* Flashcard */}
+        <div className="flex-1 px-5 flex flex-col">
+          <div
+            onClick={() => !flipped && setFlipped(true)}
+            className={`bg-white rounded-3xl shadow-lg shadow-slate-200/80 flex-1 flex flex-col items-center justify-center p-8 text-center transition-all ${!flipped ? 'cursor-pointer hover:shadow-xl' : ''}`}
+          >
+            {!flipped ? (
+              <>
+                {/* FRONT */}
+                <div className="flex items-center gap-3 mb-3">
+                  <h2 className="text-4xl font-bold text-slate-900">{card.front}</h2>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); speak(card.front); }}
+                    className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-full transition-all"
+                  >
+                    <Icon name="volume-2" size={24} />
+                  </button>
+                </div>
+                {card.phonetic && <p className="text-slate-400 text-lg mb-6">{card.phonetic}</p>}
+                <p className="text-slate-400 text-sm">Tap to reveal</p>
+              </>
+            ) : (
+              <>
+                {/* BACK */}
+                <p className="text-slate-400 text-sm mb-2">{card.front}</p>
+                <h2 className="text-3xl font-bold text-slate-900 mb-4">{card.back}</h2>
+                
+                {example ? (
+                  <p className="text-slate-500 italic text-sm bg-slate-50 px-4 py-3 rounded-xl max-w-full">"{example}"</p>
+                ) : (
+                  <button
+                    onClick={handleAIHelp}
+                    disabled={aiLoading}
+                    className="flex items-center gap-2 bg-amber-50 hover:bg-amber-100 text-amber-700 px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50"
+                  >
+                    {aiLoading ? (
+                      <><Icon name="loader-2" size={16} className="animate-spin" /> Generating...</>
+                    ) : (
+                      <><Icon name="sparkles" size={16} /> AI Help</>
+                    )}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Review Buttons */}
+          {flipped && (
+            <div className="grid grid-cols-4 gap-2 py-6 animate-slide-up">
+              {[
+                { q: 0, label: 'Again', color: 'bg-red-50 text-red-600 border-red-200', days: '1d' },
+                { q: 1, label: 'Hard', color: 'bg-orange-50 text-orange-600 border-orange-200', days: '1d' },
+                { q: 2, label: 'Good', color: 'bg-emerald-50 text-emerald-600 border-emerald-200', days: `${CONFIG.INTERVALS[Math.min((card.intervalIndex || 0) + 1, 3)]}d` },
+                { q: 3, label: 'Easy', color: 'bg-blue-50 text-blue-600 border-blue-200', days: `${CONFIG.INTERVALS[Math.min((card.intervalIndex || 0) + 2, 3)]}d` },
+              ].map(btn => (
+                <button
+                  key={btn.q}
+                  onClick={() => handleReview(btn.q)}
+                  className={`py-4 rounded-2xl border font-medium flex flex-col items-center transition-all active:scale-95 ${btn.color}`}
+                >
+                  <span className="text-sm">{btn.label}</span>
+                  <span className="text-[10px] opacity-60 mt-0.5">{btn.days}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ============================================
+  // MODALS
+  // ============================================
+
+  // Add Deck Modal
+  const AddDeckModal = () => {
+    const [title, setTitle] = useState('');
+    
+    return (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4" onClick={() => setShowAddDeck(false)}>
+        <div className="bg-white rounded-3xl p-6 w-full max-w-md animate-slide-up" onClick={e => e.stopPropagation()}>
+          <h3 className="text-xl font-bold text-slate-900 mb-5">Create New Deck</h3>
+          <input
+            type="text"
+            placeholder="Deck name"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            className="w-full bg-slate-100 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 mb-5"
+            autoFocus
+          />
+          <div className="flex gap-3">
+            <button onClick={() => setShowAddDeck(false)} className="flex-1 py-3 rounded-xl font-medium text-slate-600 hover:bg-slate-100 transition-all">
+              Cancel
+            </button>
+            <button
+              onClick={() => title.trim() && createDeck(title.trim())}
+              className="flex-1 bg-amber-500 text-white py-3 rounded-xl font-medium hover:bg-amber-600 transition-all"
+            >
+              Create
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Settings Modal
+  const SettingsModal = () => (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4" onClick={() => setShowSettings(false)}>
+      <div className="bg-white rounded-3xl p-6 w-full max-w-md animate-slide-up" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-xl font-bold text-slate-900">Settings</h3>
+          <button onClick={() => setShowSettings(false)} className="p-2 text-slate-400 hover:text-slate-600">
+            <Icon name="x" size={20} />
+          </button>
+        </div>
+
+        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 mb-5">
+          <p className="text-amber-800 font-semibold text-sm flex items-center gap-2">
+            <Icon name="sparkles" size={16} /> Free Google Gemini API
+          </p>
+          <p className="text-amber-700 text-xs mt-1">No credit card required</p>
+        </div>
+
+        <div className="mb-4">
+          <label className="text-xs font-medium text-slate-500 mb-1.5 block">API KEY</label>
+          <input
+            type="password"
+            placeholder="AIza... or gen-lang-client-..."
+            value={apiKey}
+            onChange={e => setApiKey(e.target.value)}
+            className="w-full bg-slate-100 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+        </div>
+
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-xl mb-5 ${apiKey ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+          <Icon name={apiKey ? 'check-circle' : 'x-circle'} size={18} />
+          <span className="text-sm">{apiKey ? 'API Key configured' : 'No API Key set'}</span>
+        </div>
+
+        <div className="bg-slate-50 rounded-2xl p-4 mb-5">
+          <p className="text-slate-700 font-medium text-sm mb-2">Get API Key:</p>
+          <ol className="text-slate-500 text-xs space-y-1">
+            <li>1. Go to <a href="https://aistudio.google.com/apikey" target="_blank" className="text-amber-600 underline">aistudio.google.com/apikey</a></li>
+            <li>2. Click "Create API key"</li>
+            <li>3. Copy & paste here</li>
+          </ol>
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={testApiKey} disabled={aiLoading} className="flex-1 py-3 rounded-xl font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all disabled:opacity-50">
+            {aiLoading ? 'Testing...' : 'Test'}
+          </button>
+          <button onClick={saveApiKey} className="flex-1 bg-amber-500 text-white py-3 rounded-xl font-medium hover:bg-amber-600 transition-all">
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Toast
+  const Toast = () => toast && (
+    <div className="fixed top-5 left-5 right-5 z-[60] animate-slide-up">
+      <div className={`max-w-md mx-auto px-5 py-3 rounded-2xl shadow-lg font-medium ${
+        toast.type === 'error' ? 'bg-red-500 text-white' :
+        toast.type === 'info' ? 'bg-blue-500 text-white' :
+        'bg-slate-900 text-white'
+      }`}>
+        {toast.msg}
+      </div>
+    </div>
+  );
+
+  // Bottom Navigation
+  const BottomNav = () => (
+    <nav className="fixed bottom-5 left-5 right-5 z-50">
+      <div className="max-w-md mx-auto glass rounded-2xl shadow-lg shadow-slate-300/50 border border-white/50 px-2 py-2 safe-bottom">
+        <div className="flex items-center justify-around">
+          {/* Home */}
+          <button
+            onClick={() => setView('home')}
+            className={`flex flex-col items-center py-2 px-5 rounded-xl transition-all ${
+              view === 'home' ? 'bg-amber-100 text-amber-600' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <Icon name="home" size={22} />
+            <span className="text-[10px] font-medium mt-1">Home</span>
+          </button>
+
+          {/* Add Button */}
+          <button
+            onClick={() => setShowAddDeck(true)}
+            className="bg-amber-500 hover:bg-amber-600 text-white p-3 rounded-xl shadow-lg shadow-amber-300/50 transition-all active:scale-95 -mt-4"
+          >
+            <Icon name="plus" size={24} />
+          </button>
+
+          {/* Library */}
+          <button
+            onClick={() => setView('library')}
+            className={`flex flex-col items-center py-2 px-5 rounded-xl transition-all ${
+              view === 'library' || view === 'deck' ? 'bg-amber-100 text-amber-600' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <Icon name="folder" size={22} />
+            <span className="text-[10px] font-medium mt-1">Decks</span>
+          </button>
+        </div>
+      </div>
+    </nav>
+  );
+
+  // Settings FAB
+  const SettingsFAB = () => (
+    <button
+      onClick={() => setShowSettings(true)}
+      className="fixed top-14 right-5 z-40 bg-white/80 backdrop-blur-sm p-2.5 rounded-xl shadow-sm border border-slate-200 text-slate-500 hover:text-slate-700 transition-all"
+    >
+      <Icon name="settings" size={20} />
+    </button>
+  );
+
+  // ============================================
+  // RENDER
+  // ============================================
+  return (
+    <div className="min-h-screen bg-cream">
+      {view === 'study' ? (
+        <StudyView />
+      ) : (
+        <>
+          <div className="max-w-md mx-auto">
+            {view === 'home' && <HomeView />}
+            {view === 'library' && <LibraryView />}
+            {view === 'deck' && <DeckDetailView />}
+          </div>
+          <SettingsFAB />
+          <BottomNav />
+        </>
+      )}
+
+      {showAddDeck && <AddDeckModal />}
+      {showSettings && <SettingsModal />}
+      <Toast />
+    </div>
+  );
+}
+
+// ============================================
+// MOUNT APP
+// ============================================
+ReactDOM.render(<VocabLabApp />, document.getElementById('root'));
+  </script>
+</body>
+</html>
