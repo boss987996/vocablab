@@ -17,6 +17,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   
+  <!-- Firebase SDK (Compat Version - Correct for this file structure) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -63,11 +64,12 @@
   <script type="text/babel">
 
 // ============================================
-// VOCABLAB v5.3 - Manual Sync Key Support
+// VOCABLAB v5.5 - Verified Sync & Rules Handling
 // ============================================
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
+// --- YOUR FIREBASE CONFIG ---
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBRMfkAPR0492BOleYkk7O1ELal6ncNCeY",
   authDomain: "vocab-b-23bd8.firebaseapp.com",
@@ -95,6 +97,9 @@ const STARTER_CARDS = [
   { front: 'collaborate', back: 'ร่วมมือ', phonetic: '/kəˈlæbəreɪt/', example: 'Teams collaborate on projects.' },
 ];
 
+// ============================================
+// ICON COMPONENT
+// ============================================
 const Icon = ({ name, size = 24, className = '' }) => {
   const ref = useRef(null);
   useEffect(() => {
@@ -127,7 +132,7 @@ const Icon = ({ name, size = 24, className = '' }) => {
 };
 
 // ============================================
-// CLOUD SYNC SERVICE (With Manual Key Support)
+// CLOUD SYNC SERVICE
 // ============================================
 const CloudSync = {
   db: null, auth: null, userId: null, customKey: null, initialized: false,
@@ -139,7 +144,6 @@ const CloudSync = {
       this.db = firebase.database();
       this.auth = firebase.auth();
       this.initialized = true;
-      // Load saved sync key
       this.customKey = localStorage.getItem('vocab_sync_key');
       return this.signIn();
     } catch (e) {
@@ -153,40 +157,61 @@ const CloudSync = {
       const res = await this.auth.signInAnonymously();
       this.userId = res.user.uid;
       return true;
-    } catch (e) { return false; }
+    } catch (e) { console.error('Auth error:', e); return false; }
   },
   
   setSyncKey(key) {
-    this.customKey = key;
-    if (key) localStorage.setItem('vocab_sync_key', key);
+    const cleanKey = key ? key.trim() : null; // Trim spaces
+    this.customKey = cleanKey;
+    if (cleanKey) localStorage.setItem('vocab_sync_key', cleanKey);
     else localStorage.removeItem('vocab_sync_key');
   },
 
   getUserPath() {
-    // Priority: Custom Sync Key > Anonymous User ID
-    return `users/${this.customKey || this.userId}`;
+    const pathId = this.customKey || this.userId;
+    if (!pathId) return null;
+    return `users/${pathId}`;
   },
   
   getCurrentId() {
     return this.customKey || this.userId;
   },
 
-  async saveToCloud(data) {
-    if (!this.initialized || !this.userId) return;
-    try { await this.db.ref(this.getUserPath()).set({ ...data, lastSync: Date.now() }); } catch(e){}
+  async saveToCloud(data, onError) {
+    const path = this.getUserPath();
+    if (!this.initialized || !path) return;
+    try { 
+      await this.db.ref(path).set({ ...data, lastSync: Date.now() }); 
+    } catch(e) { 
+      console.error("Save failed:", e); 
+      if(e.code === 'PERMISSION_DENIED' && onError) onError('Permission Denied: Check Firebase Rules');
+    }
   },
   
-  async loadFromCloud() {
-    if (!this.initialized || !this.userId) return null;
-    try { const s = await this.db.ref(this.getUserPath()).get(); return s.exists() ? s.val() : null; } catch(e){ return null; }
-  },
-  
-  onDataChange(cb) {
-    if (!this.initialized || !this.userId) return () => {};
-    // Re-attach listener when path changes (handled by caller ideally, but here simplified)
-    const ref = this.db.ref(this.getUserPath());
-    ref.on('value', s => s.exists() && cb(s.val()));
-    return () => ref.off('value');
+  onDataChange(cb, onError) {
+    const path = this.getUserPath();
+    if (!this.initialized || !path) return () => {};
+    
+    console.log("Listening to:", path);
+    const ref = this.db.ref(path);
+    
+    // Permission check
+    const errorHandler = (err) => {
+      console.error("Listener error:", err);
+      if(err.code === 'PERMISSION_DENIED' && onError) onError('Cloud Sync Error: Permission Denied. Please set Rules to true.');
+    };
+
+    const handler = (snapshot) => {
+      if (snapshot.exists()) {
+        cb(snapshot.val());
+      } else {
+        // Init empty data if path valid but empty
+        cb({ decks: [], cards: [], reviews: [], stats: {streak:0} });
+      }
+    };
+    
+    ref.on('value', handler, errorHandler);
+    return () => ref.off('value', handler);
   },
   
   disconnect() {
@@ -253,7 +278,7 @@ function App() {
   const [apiKey, setApiKey] = useState('');
   const [cloudEnabled, setCloudEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [currentSyncKey, setCurrentSyncKey] = useState(''); // Display UI
+  const [currentSyncKey, setCurrentSyncKey] = useState(''); 
   const syncTimer = useRef(null);
 
   const [selDeck, setSelDeck] = useState(null);
@@ -266,8 +291,11 @@ function App() {
   const [modals, setModals] = useState({ addDeck: false, addCard: false, import: false, settings: false });
   const [toast, setToast] = useState(null);
 
-  // Init
+  const notify = (msg, type='success') => { setToast({msg, type}); setTimeout(()=>setToast(null), 3500); };
+
+  // 1. Initial Load
   useEffect(() => {
+    // Load Local Data
     const d = DB.get('decks', []);
     if(d.length === 0) {
       setDecks([STARTER_DECK]); setCards(STARTER_CARDS.map(c=>({...c, id:generateId(), deckId:STARTER_DECK.id})));
@@ -285,43 +313,46 @@ function App() {
   const initCloud = async (cfg) => {
     if(await CloudSync.init(cfg)) {
       setCloudEnabled(true);
-      setCurrentSyncKey(CloudSync.getCurrentId());
-      loadCloudData();
+      const key = CloudSync.getCurrentId();
+      setCurrentSyncKey(key);
     }
   };
 
-  const loadCloudData = async () => {
+  // 3. Realtime Subscription
+  useEffect(() => {
+    if(!cloudEnabled) return;
+
     setSyncing(true);
-    const data = await CloudSync.loadFromCloud();
-    if(data) {
-      if(data.decks) setDecks(data.decks);
-      if(data.cards) setCards(data.cards);
-      if(data.reviews) setReviews(data.reviews);
-    }
-    // Subscribe
-    CloudSync.onDataChange(d => {
-      if(d?.lastSync > (lastSyncRef.current || 0)) {
-        if(d.decks) setDecks(d.decks);
-        if(d.cards) setCards(d.cards);
+    const unsubscribe = CloudSync.onDataChange(
+      (d) => {
+        if(d) {
+          setDecks(d.decks || []);
+          setCards(d.cards || []);
+          setReviews(d.reviews || []);
+          if(d.stats) setStats(d.stats);
+        }
+        setSyncing(false);
+      },
+      (errorMsg) => {
+        setSyncing(false);
+        notify(errorMsg, 'error');
       }
-    });
-    setSyncing(false);
-  };
+    );
 
-  const lastSyncRef = useRef(0);
+    return () => { unsubscribe(); };
+  }, [cloudEnabled, currentSyncKey]);
 
+  // 4. Auto Save
   const saveData = useCallback(() => {
     DB.set('decks', decks); DB.set('cards', cards); DB.set('reviews', reviews); DB.set('stats', stats);
-    if(cloudEnabled) {
+    
+    if(cloudEnabled && !syncing) {
       clearTimeout(syncTimer.current);
       syncTimer.current = setTimeout(() => {
-        setSyncing(true);
-        const now = Date.now();
-        lastSyncRef.current = now;
-        CloudSync.saveToCloud({decks, cards, reviews, stats}).then(() => setSyncing(false));
+        CloudSync.saveToCloud({decks, cards, reviews, stats}, (errMsg) => notify(errMsg, 'error'));
       }, 2000);
     }
-  }, [decks, cards, reviews, stats, cloudEnabled]);
+  }, [decks, cards, reviews, stats, cloudEnabled, syncing]);
 
   useEffect(() => saveData(), [decks, cards, reviews, stats]);
 
@@ -329,9 +360,9 @@ function App() {
     document.body.classList.toggle('modal-open', Object.values(modals).some(v=>v));
   }, [modals]);
 
-  const notify = (msg, type='success') => { setToast({msg, type}); setTimeout(()=>setToast(null), 3000); };
   const toggleModal = (n, v) => setModals(prev => ({...prev, [n]:v}));
 
+  // Actions
   const createDeck = (t) => {
     setDecks([...decks, {id:generateId(), title:t, createdAt:new Date().toISOString()}]);
     toggleModal('addDeck', false); notify('Deck Created');
@@ -378,10 +409,12 @@ function App() {
   };
 
   const updateSyncKey = (newKey) => {
-    CloudSync.setSyncKey(newKey);
-    setCurrentSyncKey(newKey || CloudSync.userId);
-    loadCloudData(); // Reload data from new path
-    notify('Sync Key Updated! Loading data...');
+    // Basic cleanup
+    const cleanKey = newKey ? newKey.trim() : '';
+    if(!cleanKey) return;
+    CloudSync.setSyncKey(cleanKey);
+    setCurrentSyncKey(cleanKey); 
+    notify('Sync Key Updated. Reloading...');
   };
 
   const dueCount = useMemo(() => cards.filter(SRS.isDue).length, [cards]);
