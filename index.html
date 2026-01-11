@@ -496,6 +496,9 @@ const SRS = {
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
+// Deep compare two values
+const isEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 const DECK_COLORS = ['mint', 'coral', 'gold', 'lavender'];
 const getColorClasses = (color) => {
   const colors = {
@@ -645,7 +648,11 @@ function App() {
   const [currentSyncKey, setCurrentSyncKey] = useState('');
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Sync control flags
   const syncTimer = useRef(null);
+  const isLocalChange = useRef(false); // Flag: true = change came from user action
+  const lastSyncedData = useRef(null); // Store last synced data to compare
 
   const [selDeck, setSelDeck] = useState(null);
   const [studyQ, setStudyQ] = useState([]);
@@ -745,13 +752,32 @@ function App() {
       console.log("Starting single listener for:", currentPath);
       
       unsubscribeRef.current = CloudSync.onDataChange(
-        (d) => {
-          if (d) {
-            // Only update if data exists and is valid
-            setDecks(d.decks || []);
-            setCards(d.cards || []);
-            setReviews(d.reviews || []);
-            if (d.stats) setStats(d.stats);
+        (cloudData) => {
+          // CRITICAL: Only update state if this is NOT a result of our own save
+          if (isLocalChange.current) {
+            console.log("Ignoring cloud update (local change in progress)");
+            isLocalChange.current = false;
+            setSyncing(false);
+            return;
+          }
+          
+          // Check if cloud data is actually different from current state
+          const cloudDataStr = JSON.stringify(cloudData);
+          if (lastSyncedData.current === cloudDataStr) {
+            console.log("Cloud data unchanged, skipping update");
+            setSyncing(false);
+            return;
+          }
+          
+          console.log("Applying cloud data to state");
+          lastSyncedData.current = cloudDataStr;
+          
+          if (cloudData) {
+            // Only update if data exists
+            if (cloudData.decks) setDecks(cloudData.decks);
+            if (cloudData.cards) setCards(cloudData.cards);
+            if (cloudData.reviews) setReviews(cloudData.reviews);
+            if (cloudData.stats) setStats(cloudData.stats);
           }
           setSyncing(false);
         },
@@ -771,22 +797,41 @@ function App() {
     };
   }, [cloudEnabled, currentSyncKey, isOffline]);
 
-  // Auto Save
+  // Auto Save - with loop prevention
   const saveData = useCallback(() => {
-    // Always save locally
+    // Always save locally first
     DB.set('decks', decks);
     DB.set('cards', cards);
     DB.set('reviews', reviews);
     DB.set('stats', stats);
     
-    // Cloud sync with debounce
-    if (cloudEnabled && !syncing && !isOffline) {
+    // Cloud sync with debounce and loop prevention
+    if (cloudEnabled && !isOffline) {
       clearTimeout(syncTimer.current);
+      
+      // Create data object
+      const dataToSave = { decks, cards, reviews, stats };
+      const dataStr = JSON.stringify(dataToSave);
+      
+      // Only save if data actually changed from last sync
+      if (lastSyncedData.current === dataStr) {
+        console.log("Data unchanged, skipping cloud save");
+        return;
+      }
+      
       syncTimer.current = setTimeout(() => {
-        CloudSync.saveToCloud({ decks, cards, reviews, stats }, (errMsg) => notify(errMsg, 'error'));
-      }, 2000);
+        console.log("Saving to cloud...");
+        // Set flag BEFORE saving to prevent listener from re-updating
+        isLocalChange.current = true;
+        lastSyncedData.current = dataStr;
+        
+        CloudSync.saveToCloud(dataToSave, (errMsg) => {
+          notify(errMsg, 'error');
+          isLocalChange.current = false;
+        });
+      }, 1500); // Increased debounce to 1.5 seconds
     }
-  }, [decks, cards, reviews, stats, cloudEnabled, syncing, isOffline]);
+  }, [decks, cards, reviews, stats, cloudEnabled, isOffline]);
 
   useEffect(() => {
     if (!isLoading) saveData();
