@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>VocabLab v8 - AI Enhanced</title>
+  <title>VocabLab v8.1 - Gemini 2.5 Enhanced</title>
   <meta name="description" content="Master TOEIC vocabulary with spaced repetition and AI assistance">
   <meta name="theme-color" content="#FFFFFF">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
-  
+   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@0.292.0/dist/umd/lucide.js"></script>
-  
+   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-  
+   
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
@@ -90,14 +90,14 @@
       --sat: env(safe-area-inset-top, 0px); 
       --sab: env(safe-area-inset-bottom, 20px); 
     }
-    
+     
     .card {
       background: #FFFFFF;
       border-radius: 20px;
       border: 1px solid #F1F5F9;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
     }
-    
+     
     .input-clean {
       background: #F8FAFC;
       border: 1px solid #E2E8F0;
@@ -109,22 +109,22 @@
       box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
       outline: none;
     }
-    
+     
     .hide-scrollbar::-webkit-scrollbar { display: none; }
     .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     .pb-safe { padding-bottom: max(20px, var(--sab)); }
     .pt-safe { padding-top: max(16px, var(--sat)); }
-    
+     
     .modal-backdrop { background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px); }
     .modal-content { max-height: 85vh; overflow-y: auto; }
     body.modal-open { overflow: hidden; position: fixed; width: 100%; }
-    
+     
     .skeleton {
       background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
       background-size: 200% 100%;
       animation: shimmer 2s linear infinite;
     }
-    
+     
     .card-flip { perspective: 1000px; }
     .card-flip-inner {
       transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
@@ -136,12 +136,12 @@
       -webkit-backface-visibility: hidden;
     }
     .card-back { transform: rotateY(180deg); }
-    
+     
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
-    
+     
     .btn-primary {
       background: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
       color: white;
@@ -152,7 +152,7 @@
     .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px -2px rgba(249, 115, 22, 0.5); }
     .btn-primary:active { transform: scale(0.98); }
     .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-    
+     
     .btn-secondary {
       background: #F8FAFC;
       border: 1px solid #E2E8F0;
@@ -161,7 +161,7 @@
       transition: all 0.2s ease;
     }
     .btn-secondary:hover { background: #F1F5F9; border-color: #CBD5E1; }
-    
+     
     .btn-ai {
       background: linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%);
       color: white;
@@ -169,14 +169,14 @@
       box-shadow: 0 2px 8px -2px rgba(139, 92, 246, 0.4);
     }
     .btn-ai:hover { box-shadow: 0 4px 12px -2px rgba(139, 92, 246, 0.5); }
-    
+     
     .gradient-text {
       background: linear-gradient(135deg, #F97316, #EAB308);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
-    
+     
     .ai-gradient {
       background: linear-gradient(135deg, #8B5CF6, #EC4899);
       -webkit-background-clip: text;
@@ -190,7 +190,7 @@
   <script type="text/babel">
 
 // ============================================
-// VOCABLAB v8.0 - AI Enhanced Edition
+// VOCABLAB v8.1 - AI Enhanced (Gemini 2.5)
 // Features: Auto-Generate Deck, Sentence Check
 // ============================================
 
@@ -254,7 +254,7 @@ const Logo = ({ size = 32, className = '' }) => (
 );
 
 // ============================================
-// AI SERVICE - Enhanced with JSON Mode
+// AI SERVICE - Enhanced with JSON Mode & Gemini 2.5
 // ============================================
 const AIService = {
   // Base API call with JSON Mode
@@ -274,8 +274,9 @@ const AIService = {
     }
 
     try {
+      // UPDATED TO GEMINI 2.5 FLASH
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -400,12 +401,12 @@ const Icon = ({ name, size = 24, className = '', fill = 'none' }) => {
       svg.setAttribute('stroke-linecap', 'round');
       svg.setAttribute('stroke-linejoin', 'round');
       if (Array.isArray(iconData)) {
-         const children = Array.isArray(iconData[2]) ? iconData[2] : [];
-         children.forEach(([tag, attrs]) => {
-           const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-           Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
-           svg.appendChild(el);
-         });
+          const children = Array.isArray(iconData[2]) ? iconData[2] : [];
+          children.forEach(([tag, attrs]) => {
+            const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+            Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+            svg.appendChild(el);
+          });
       }
       ref.current.appendChild(svg);
     }
@@ -418,7 +419,7 @@ const Icon = ({ name, size = 24, className = '', fill = 'none' }) => {
 // ============================================
 const CloudSync = {
   db: null, auth: null, userId: null, customKey: null, initialized: false, activeListener: null,
-  
+   
   init(config) {
     if (this.initialized) return Promise.resolve(true);
     try {
@@ -430,7 +431,7 @@ const CloudSync = {
       return this.signIn();
     } catch (e) { console.error('Firebase init error:', e); return Promise.resolve(false); }
   },
-  
+   
   async signIn() {
     try {
       const res = await this.auth.signInAnonymously();
@@ -438,7 +439,7 @@ const CloudSync = {
       return true;
     } catch (e) { console.error('Auth error:', e); return false; }
   },
-  
+   
   setSyncKey(key) {
     this.cleanupListener();
     const cleanKey = key ? key.trim().replace(/[.#$\/\[\]]/g, '_') : null;
@@ -451,7 +452,7 @@ const CloudSync = {
     const pathId = this.customKey || this.userId;
     return pathId ? `users/${pathId}` : null;
   },
-  
+   
   getCurrentId() { return this.customKey || this.userId; },
 
   async saveToCloud(data, onError) {
@@ -464,18 +465,18 @@ const CloudSync = {
       if(e.code === 'PERMISSION_DENIED' && onError) onError('Permission Denied');
     }
   },
-  
+   
   cleanupListener() {
     if (this.activeListener) { this.activeListener.off(); this.activeListener = null; }
   },
-  
+   
   onDataChange(cb, onError) {
     const path = this.getUserPath();
     if (!this.initialized || !path) return () => {};
     this.cleanupListener();
     const ref = this.db.ref(path);
     this.activeListener = ref;
-    
+     
     const handler = (snapshot) => {
       if (snapshot.exists()) cb(snapshot.val());
       else cb({ decks: [], cards: [], reviews: [], stats: {streak:0} });
@@ -483,7 +484,7 @@ const CloudSync = {
     const errorHandler = (err) => {
       if(err.code === 'PERMISSION_DENIED' && onError) onError('Permission Denied');
     };
-    
+     
     ref.on('value', handler, errorHandler);
     return () => { ref.off('value', handler); this.activeListener = null; };
   },
@@ -544,11 +545,11 @@ const SRS = {
       nextReviewAt: new Date().toISOString() // Due NOW
     };
   },
-  
+   
   // Calculate next review after answering
   calculate(card, q) {
     let { repetitions = 0, intervalIndex = 0, easeFactor = 2.5 } = card;
-    
+     
     if (q < 2) { 
       repetitions = 0; 
       intervalIndex = 0; 
@@ -558,17 +559,17 @@ const SRS = {
       else if (repetitions === 2) intervalIndex = 1;
       else intervalIndex = Math.min(intervalIndex + 1, 4);
     }
-    
+     
     const eq = q + 2;
     easeFactor = Math.max(1.3, easeFactor + (0.1 - (5 - eq) * (0.08 + (5 - eq) * 0.02)));
     if (q === 3) intervalIndex = Math.min(intervalIndex + 1, 4);
-    
+     
     const nextDate = new Date();
     nextDate.setDate(nextDate.getDate() + CONFIG.INTERVALS[intervalIndex]);
-    
+     
     return { repetitions, intervalIndex, easeFactor, nextReviewAt: nextDate.toISOString() };
   },
-  
+   
   isDue: (c) => !c.nextReviewAt || new Date(c.nextReviewAt) <= new Date()
 };
 
@@ -649,7 +650,7 @@ const CircularProgress = ({ value, max, size = 80 }) => {
   const circumference = 2 * Math.PI * radius;
   const progress = Math.min(value / max, 1);
   const offset = circumference - (progress * circumference);
-  
+   
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg className="w-full h-full transform -rotate-90">
@@ -681,11 +682,11 @@ const SentenceCheckPanel = ({ word, apiKey, onClose }) => {
   const handleCheck = async () => {
     if (!sentence.trim()) return;
     if (!apiKey) { setError('กรุณาใส่ API Key ใน Settings'); return; }
-    
+     
     setChecking(true);
     setError('');
     setResult(null);
-    
+     
     try {
       const data = await AIService.checkSentence(word, sentence, apiKey);
       setResult(data);
@@ -705,16 +706,16 @@ const SentenceCheckPanel = ({ word, apiKey, onClose }) => {
           <Icon name="x" size={18} />
         </button>
       </div>
-      
+       
       <p className="text-sm text-body mb-3">ลองแต่งประโยคโดยใช้คำว่า "<span className="font-semibold text-lavender">{word}</span>"</p>
-      
+       
       <textarea
         value={sentence}
         onChange={e => setSentence(e.target.value)}
         placeholder={`Type a sentence using "${word}"...`}
         className="w-full input-clean p-3 rounded-xl text-heading text-sm resize-none h-20 mb-3"
       />
-      
+       
       <button
         onClick={handleCheck}
         disabled={checking || !sentence.trim()}
@@ -745,7 +746,7 @@ const SentenceCheckPanel = ({ word, apiKey, onClose }) => {
               ))}
             </div>
           </div>
-          
+           
           {/* Grammar */}
           <div className={`p-3 rounded-xl ${result.grammarCorrect ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
             <div className="flex items-center gap-2 mb-1">
@@ -755,7 +756,7 @@ const SentenceCheckPanel = ({ word, apiKey, onClose }) => {
             </div>
             <p className="text-sm text-body">{result.grammarNote}</p>
           </div>
-          
+           
           {/* Context */}
           <div className={`p-3 rounded-xl ${result.contextCorrect ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
             <div className="flex items-center gap-2 mb-1">
@@ -765,7 +766,7 @@ const SentenceCheckPanel = ({ word, apiKey, onClose }) => {
             </div>
             <p className="text-sm text-body">{result.contextNote}</p>
           </div>
-          
+           
           {/* Corrected Sentence */}
           {result.correctedSentence && result.correctedSentence !== sentence && (
             <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl">
@@ -773,7 +774,7 @@ const SentenceCheckPanel = ({ word, apiKey, onClose }) => {
               <p className="text-sm text-heading italic">"{result.correctedSentence}"</p>
             </div>
           )}
-          
+           
           {/* Suggestion */}
           {result.suggestion && (
             <div className="p-3 bg-violet-50 border border-violet-200 rounded-xl">
@@ -796,14 +797,14 @@ function App() {
   const [cards, setCards] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [stats, setStats] = useState({ streak: 0, totalReviews: 0 });
-  
+   
   const [apiKey, setApiKey] = useState('');
   const [cloudEnabled, setCloudEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [currentSyncKey, setCurrentSyncKey] = useState('');
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isLoading, setIsLoading] = useState(true);
-  
+   
   const syncTimer = useRef(null);
   const lastSaveTime = useRef(0);
   const SYNC_LOCK_DURATION = 3000;
@@ -823,7 +824,7 @@ function App() {
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false });
   const [editingCard, setEditingCard] = useState(null);
   const [toast, setToast] = useState(null);
-  
+   
   // Generate Deck State
   const [genTopic, setGenTopic] = useState('');
   const [genCount, setGenCount] = useState(10);
@@ -850,7 +851,7 @@ function App() {
       setIsLoading(true);
       const localDecks = DB.get('decks', []);
       const localCards = DB.get('cards', []);
-      
+       
       if (localDecks.length === 0) {
         setDecks([STARTER_DECK]);
         setCards(STARTER_CARDS.map(c => ({ ...c, id: generateId(), deckId: STARTER_DECK.id, ...SRS.init() })));
@@ -858,11 +859,11 @@ function App() {
         setDecks(localDecks);
         setCards(localCards);
       }
-      
+       
       setReviews(DB.get('reviews', []));
       setStats(DB.get('stats', { streak: 0, totalReviews: 0 }));
       setApiKey(DB.getApiKey());
-      
+       
       if (navigator.onLine) await initCloud(FIREBASE_CONFIG);
       setTimeout(() => setIsLoading(false), 600);
     };
@@ -924,7 +925,7 @@ function App() {
   // ============================================
   // ACTIONS
   // ============================================
-  
+   
   const createDeck = (title) => {
     const color = DECK_COLORS[decks.length % DECK_COLORS.length];
     setDecks([...decks, { id: generateId(), title, createdAt: new Date().toISOString(), color }]);
@@ -1000,12 +1001,12 @@ function App() {
   const handleGenerateDeck = async () => {
     if (!genTopic.trim()) { notify('Please enter a topic', 'warning'); return; }
     if (!apiKey) { notify('Please add API Key in Settings first', 'warning'); toggleModal('generateDeck', false); toggleModal('settings', true); return; }
-    
+     
     setGenerating(true);
-    
+     
     try {
       const result = await AIService.generateDeck(genTopic, genCount, genLevel, apiKey);
-      
+       
       // Smart extraction: find the array of words
       let wordsArray = null;
       if (Array.isArray(result)) {
@@ -1059,20 +1060,20 @@ function App() {
 
       setDecks([...decks, newDeck]);
       setCards([...cards, ...newCards]);
-      
+       
       toggleModal('generateDeck', false);
       setGenTopic('');
       notify(`Generated ${newCards.length} cards! ✨`, 'success');
-      
+       
       // Navigate to the new deck
       setSelDeck(newDeck);
       setView('deck');
-      
+       
     } catch (err) {
       console.error('Generate error:', err);
       notify(err.message || 'Generation failed', 'error');
     }
-    
+     
     setGenerating(false);
   };
 
@@ -1091,7 +1092,7 @@ function App() {
     const updated = SRS.calculate(c, q);
     setCards(cards.map(x => x.id === c.id ? { ...x, ...updated } : x));
     setReviews([...reviews, { cardId: c.id, q, date: new Date().toISOString() }]);
-    
+     
     const today = new Date().toDateString();
     const todayReviews = reviews.filter(r => new Date(r.date).toDateString() === today).length + 1;
     if (todayReviews >= CONFIG.DAILY_GOAL && stats.lastGoalDate !== today) {
@@ -1099,7 +1100,7 @@ function App() {
     } else {
       setStats(prev => ({ ...prev, totalReviews: prev.totalReviews + 1 }));
     }
-    
+     
     if (currCard < studyQ.length - 1) {
       setCurrCard(currCard + 1); setFlipped(false); setAiData(null); setShowPractice(false);
     } else { notify('Session complete! 🎉'); setView('home'); }
@@ -1158,7 +1159,7 @@ function App() {
   return (
     <div className="min-h-screen bg-cream text-heading pb-safe">
       <OfflineIndicator isOffline={isOffline} />
-      
+       
       {/* Header */}
       <header className="fixed top-0 w-full bg-white/80 backdrop-blur-lg z-40 pt-safe px-4 pb-3 border-b border-slate-100">
         <div className="flex justify-between items-center max-w-lg mx-auto">
@@ -1291,7 +1292,7 @@ function App() {
             <button onClick={() => setView('library')} className="flex items-center text-muted gap-1 text-sm hover:text-body">
               <Icon name="arrow-left" size={16} /> Back
             </button>
-            
+             
             <div className="flex justify-between items-start mb-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -1368,7 +1369,7 @@ function App() {
             <div className="flex-1 card-flip">
               <div onClick={() => !flipped && setFlipped(true)}
                 className={`card-flip-inner w-full h-full ${flipped ? 'flipped' : ''}`} style={{ minHeight: '360px' }}>
-                
+                 
                 {/* Front */}
                 <div className="card-front absolute inset-0 card p-8 flex flex-col items-center justify-center cursor-pointer shadow-elevated">
                   <h2 className="text-4xl font-bold mb-4 text-center">{studyQ[currCard].front}</h2>
@@ -1384,7 +1385,7 @@ function App() {
                 <div className="card-back absolute inset-0 card p-6 flex flex-col items-center overflow-y-auto shadow-elevated">
                   <p className="text-muted text-sm mb-2">{studyQ[currCard].front}</p>
                   <h2 className="text-3xl font-bold gradient-text mb-4 text-center">{studyQ[currCard].back}</h2>
-                  
+                   
                   {(aiData?.example || studyQ[currCard].example) && (
                     <div className="bg-slate-50 p-4 rounded-xl mb-4 w-full border border-slate-100">
                       <p className="text-sm text-body italic">"{aiData?.example || studyQ[currCard].example}"</p>
@@ -1486,7 +1487,7 @@ function App() {
           onClick={() => setModals({ addDeck: false, addCard: false, import: false, settings: false, editCard: false, generateDeck: false })}>
           <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 modal-content pb-safe animate-slide-up shadow-elevated"
             onClick={e => e.stopPropagation()}>
-            
+             
             {/* Add Deck */}
             {modals.addDeck && (
               <>
@@ -1509,7 +1510,7 @@ function App() {
                     <p className="text-sm text-muted">Create vocabulary deck instantly</p>
                   </div>
                 </div>
-                
+                 
                 <div className="space-y-4">
                   <div>
                     <label className="text-sm font-medium text-body block mb-2">Topic / หัวข้อ</label>
@@ -1521,7 +1522,7 @@ function App() {
                       autoFocus 
                     />
                   </div>
-                  
+                   
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-sm font-medium text-body block mb-2">จำนวนคำ</label>
@@ -1616,7 +1617,7 @@ function App() {
             {modals.settings && (
               <>
                 <h3 className="text-xl font-bold mb-6">Settings</h3>
-                
+                 
                 <div className="mb-6">
                   <label className="text-xs font-bold text-muted uppercase block mb-2">Gemini API Key</label>
                   <p className="text-xs text-muted mb-3">Required for AI features (Generate Deck, AI Explain, Sentence Check)</p>
