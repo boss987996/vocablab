@@ -321,6 +321,7 @@ const SkeletonStats = () => (
 // ============================================
 const CloudSync = {
   db: null, auth: null, userId: null, customKey: null, initialized: false,
+  activeListener: null, // Track active listener
   
   init(config) {
     if (this.initialized) return Promise.resolve(true);
@@ -346,6 +347,9 @@ const CloudSync = {
   },
   
   setSyncKey(key) {
+    // Cleanup existing listener before changing key
+    this.cleanupListener();
+    
     const cleanKey = key ? key.trim().replace(/[.#$\/\[\]]/g, '_') : null;
     this.customKey = cleanKey;
     if (cleanKey) localStorage.setItem('vocab_sync_key', cleanKey);
@@ -353,6 +357,8 @@ const CloudSync = {
   },
 
   getUserPath() {
+    // IMPORTANT: Use customKey if set, otherwise use userId
+    // This ensures we only have ONE path at any time
     const pathId = this.customKey || this.userId;
     if (!pathId) return null;
     return `users/${pathId}`;
@@ -366,6 +372,7 @@ const CloudSync = {
     const path = this.getUserPath();
     if (!this.initialized || !path) return;
     try { 
+      console.log("Saving to:", path);
       await this.db.ref(path).set({ ...data, lastSync: Date.now() }); 
     } catch(e) { 
       console.error("Save failed:", e); 
@@ -373,12 +380,24 @@ const CloudSync = {
     }
   },
   
+  cleanupListener() {
+    if (this.activeListener) {
+      console.log("Removing previous listener");
+      this.activeListener.off();
+      this.activeListener = null;
+    }
+  },
+  
   onDataChange(cb, onError) {
     const path = this.getUserPath();
     if (!this.initialized || !path) return () => {};
     
-    console.log("Listening to:", path);
+    // Cleanup any existing listener first
+    this.cleanupListener();
+    
+    console.log("Setting up listener for:", path);
     const ref = this.db.ref(path);
+    this.activeListener = ref; // Store reference
     
     const errorHandler = (err) => {
       console.error("Listener error:", err);
@@ -386,6 +405,7 @@ const CloudSync = {
     };
 
     const handler = (snapshot) => {
+      console.log("Data received from:", path);
       if (snapshot.exists()) {
         cb(snapshot.val());
       } else {
@@ -394,10 +414,16 @@ const CloudSync = {
     };
     
     ref.on('value', handler, errorHandler);
-    return () => ref.off('value', handler);
+    
+    return () => {
+      console.log("Unsubscribing from:", path);
+      ref.off('value', handler);
+      this.activeListener = null;
+    };
   },
   
   disconnect() {
+    this.cleanupListener();
     if(this.auth) this.auth.signOut();
     this.initialized = false; this.userId = null;
   }
@@ -691,32 +717,58 @@ function App() {
   const initCloud = async (cfg) => {
     if (await CloudSync.init(cfg)) {
       setCloudEnabled(true);
-      setCurrentSyncKey(CloudSync.getCurrentId());
+      // Get the current ID (custom key or user id)
+      const key = CloudSync.getCurrentId();
+      setCurrentSyncKey(key || '');
+      console.log("Cloud initialized with key:", key);
     }
   };
 
-  // Realtime Subscription
+  // Realtime Subscription - Only ONE listener at a time
+  const unsubscribeRef = useRef(null);
+  
   useEffect(() => {
+    // Always cleanup previous listener first
+    if (unsubscribeRef.current) {
+      console.log("Cleaning up previous listener");
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
+    
     if (!cloudEnabled || isOffline) return;
 
-    setSyncing(true);
-    const unsubscribe = CloudSync.onDataChange(
-      (d) => {
-        if (d) {
-          if (d.decks?.length) setDecks(d.decks);
-          if (d.cards?.length) setCards(d.cards);
-          if (d.reviews?.length) setReviews(d.reviews);
-          if (d.stats) setStats(d.stats);
+    // Small delay to ensure cleanup is complete
+    const timeoutId = setTimeout(() => {
+      setSyncing(true);
+      
+      const currentPath = CloudSync.getUserPath();
+      console.log("Starting single listener for:", currentPath);
+      
+      unsubscribeRef.current = CloudSync.onDataChange(
+        (d) => {
+          if (d) {
+            // Only update if data exists and is valid
+            setDecks(d.decks || []);
+            setCards(d.cards || []);
+            setReviews(d.reviews || []);
+            if (d.stats) setStats(d.stats);
+          }
+          setSyncing(false);
+        },
+        (errorMsg) => {
+          setSyncing(false);
+          notify(errorMsg, 'error');
         }
-        setSyncing(false);
-      },
-      (errorMsg) => {
-        setSyncing(false);
-        notify(errorMsg, 'error');
-      }
-    );
+      );
+    }, 100);
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(timeoutId);
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+    };
   }, [cloudEnabled, currentSyncKey, isOffline]);
 
   // Auto Save
@@ -899,10 +951,20 @@ function App() {
 
   const updateSyncKey = (newKey) => {
     const cleanKey = newKey?.trim();
-    if (!cleanKey) return;
+    if (!cleanKey) {
+      notify('Please enter a sync key', 'warning');
+      return;
+    }
+    
+    // Update the sync key (this will cleanup old listener)
     CloudSync.setSyncKey(cleanKey);
     setCurrentSyncKey(cleanKey);
-    notify('Sync key updated! Reconnecting...');
+    
+    // Force a page reload to ensure clean state
+    notify('Sync key updated! Reloading...');
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
   };
 
   // Computed Values
