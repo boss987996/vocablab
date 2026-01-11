@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>VocabLab - Cloud Sync</title>
+  <title>VocabLab v6 - Enhanced</title>
   <meta name="description" content="Master TOEIC vocabulary with spaced repetition and AI assistance">
-  <meta name="theme-color" content="#F8FAFC">
+  <meta name="theme-color" content="#0F172A">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@0.292.0/dist/umd/lucide.js"></script>
@@ -17,46 +17,152 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   
-  <!-- Firebase SDK (Compat Version - Correct for this file structure) -->
+  <!-- Firebase SDK (Compat Version) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+
+  <!-- Google Fonts - Distinctive Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 
   <script>
     tailwind.config = {
       theme: {
         extend: {
-          colors: { cream: '#F8FAFC', primary: '#D97706' },
+          colors: { 
+            midnight: '#0F172A',
+            ocean: '#1E3A5F',
+            coral: '#FF6B6B',
+            mint: '#4ECDC4',
+            gold: '#FFD93D',
+            lavender: '#A78BFA',
+            slate: {
+              850: '#1E293B',
+              750: '#334155'
+            }
+          },
+          fontFamily: {
+            sans: ['DM Sans', 'sans-serif'],
+            mono: ['Space Mono', 'monospace'],
+          },
           animation: {
-            'fade-in': 'fadeIn 0.3s ease-out',
-            'slide-up': 'slideUp 0.4s ease-out',
-            'scale-in': 'scaleIn 0.2s ease-out',
+            'fade-in': 'fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+            'slide-up': 'slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+            'scale-in': 'scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
             'spin-slow': 'spin 1.5s linear infinite',
+            'pulse-slow': 'pulse 3s ease-in-out infinite',
+            'shimmer': 'shimmer 2s linear infinite',
+            'float': 'float 6s ease-in-out infinite',
+            'glow': 'glow 2s ease-in-out infinite alternate',
           },
           keyframes: {
             fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
-            slideUp: { '0%': { opacity: '0', transform: 'translateY(20px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
-            scaleIn: { '0%': { opacity: '0', transform: 'scale(0.95)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
+            slideUp: { '0%': { opacity: '0', transform: 'translateY(30px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+            scaleIn: { '0%': { opacity: '0', transform: 'scale(0.9)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
+            shimmer: { '0%': { backgroundPosition: '-200% 0' }, '100%': { backgroundPosition: '200% 0' } },
+            float: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-10px)' } },
+            glow: { '0%': { boxShadow: '0 0 20px rgba(78, 205, 196, 0.3)' }, '100%': { boxShadow: '0 0 40px rgba(78, 205, 196, 0.6)' } },
           }
         }
       }
     }
   </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-    
-    * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
-    html, body { background: #F8FAFC; overscroll-behavior: none; min-height: 100%; height: 100%; }
-    :root { --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 20px); }
-    .glass { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+    * { 
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif; 
+      -webkit-tap-highlight-color: transparent; 
+      box-sizing: border-box; 
+    }
+    html, body { 
+      background: linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0F172A 100%); 
+      overscroll-behavior: none; 
+      min-height: 100%; 
+      height: 100%; 
+      color: #F1F5F9;
+    }
+    :root { 
+      --sat: env(safe-area-inset-top, 0px); 
+      --sab: env(safe-area-inset-bottom, 20px); 
+    }
+    .glass { 
+      background: rgba(30, 41, 59, 0.8); 
+      backdrop-filter: blur(20px); 
+      -webkit-backdrop-filter: blur(20px); 
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .glass-light {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
     .hide-scrollbar::-webkit-scrollbar { display: none; }
     .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    .pb-safe { padding-bottom: var(--sab); }
+    .pb-safe { padding-bottom: max(20px, var(--sab)); }
     .pt-safe { padding-top: max(20px, var(--sat)); }
-    .modal-backdrop { background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); }
+    .modal-backdrop { background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); }
     .modal-content { max-height: 85vh; overflow-y: auto; }
     body.modal-open { overflow: hidden; position: fixed; width: 100%; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    /* Gradient Text */
+    .gradient-text {
+      background: linear-gradient(135deg, #4ECDC4, #A78BFA);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    /* Shimmer Effect for Skeleton */
+    .skeleton {
+      background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 2s linear infinite;
+    }
+    
+    /* Card Flip Animation */
+    .card-flip {
+      perspective: 1000px;
+    }
+    .card-flip-inner {
+      transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      transform-style: preserve-3d;
+    }
+    .card-flip-inner.flipped {
+      transform: rotateY(180deg);
+    }
+    .card-front, .card-back {
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+    .card-back {
+      transform: rotateY(180deg);
+    }
+    
+    /* Offline Badge */
+    .offline-badge {
+      background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+    }
+    
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+    
+    /* Button Press Effect */
+    .btn-press {
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .btn-press:active {
+      transform: scale(0.95);
+    }
+    
+    /* Glow Effects */
+    .glow-mint { box-shadow: 0 0 30px rgba(78, 205, 196, 0.3); }
+    .glow-coral { box-shadow: 0 0 30px rgba(255, 107, 107, 0.3); }
+    .glow-gold { box-shadow: 0 0 30px rgba(255, 217, 61, 0.3); }
+    .glow-lavender { box-shadow: 0 0 30px rgba(167, 139, 250, 0.3); }
   </style>
 </head>
 <body>
@@ -64,7 +170,9 @@
   <script type="text/babel">
 
 // ============================================
-// VOCABLAB v5.5 - Verified Sync & Rules Handling
+// VOCABLAB v6.0 - Enhanced Edition
+// Features: AI Service, Delete Confirmation, 
+// Search, Export, Offline Mode, Loading States
 // ============================================
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
@@ -82,25 +190,80 @@ const FIREBASE_CONFIG = {
 };
 
 const CONFIG = {
-  INTERVALS: [1, 3, 7, 30],
+  INTERVALS: [1, 3, 7, 14, 30],
   MIN_EASE: 1.3,
   DEFAULT_EASE: 2.5,
   DAILY_GOAL: 20,
 };
 
-const STARTER_DECK = { id: 'starter_deck_001', title: 'TOEIC Essential', createdAt: new Date().toISOString() };
+const STARTER_DECK = { id: 'starter_deck_001', title: 'TOEIC Essential', createdAt: new Date().toISOString(), color: 'mint' };
 const STARTER_CARDS = [
-  { front: 'accomplish', back: 'ทำให้สำเร็จ', phonetic: '/əˈkɑːmplɪʃ/', example: 'We accomplished our goals.' },
-  { front: 'negotiate', back: 'เจรจาต่อรอง', phonetic: '/nɪˈɡoʊʃieɪt/', example: 'We negotiated a new contract.' },
-  { front: 'deadline', back: 'เส้นตาย', phonetic: '/ˈdedlaɪn/', example: 'The deadline is tomorrow.' },
-  { front: 'implement', back: 'เริ่มใช้งาน', phonetic: '/ˈɪmpləment/', example: 'They implemented the new system.' },
-  { front: 'collaborate', back: 'ร่วมมือ', phonetic: '/kəˈlæbəreɪt/', example: 'Teams collaborate on projects.' },
+  { front: 'accomplish', back: 'ทำให้สำเร็จ', phonetic: '/əˈkɑːmplɪʃ/', example: 'We accomplished our goals ahead of schedule.' },
+  { front: 'negotiate', back: 'เจรจาต่อรอง', phonetic: '/nɪˈɡoʊʃieɪt/', example: 'They negotiated a better contract.' },
+  { front: 'deadline', back: 'เส้นตาย, กำหนดส่ง', phonetic: '/ˈdedlaɪn/', example: 'The deadline for submission is Friday.' },
+  { front: 'implement', back: 'นำไปใช้, ดำเนินการ', phonetic: '/ˈɪmpləment/', example: 'We will implement the new system next month.' },
+  { front: 'collaborate', back: 'ร่วมมือกัน', phonetic: '/kəˈlæbəreɪt/', example: 'Teams collaborate across departments.' },
+  { front: 'revenue', back: 'รายได้', phonetic: '/ˈrevənuː/', example: 'Revenue increased by 15% this quarter.' },
+  { front: 'strategy', back: 'กลยุทธ์', phonetic: '/ˈstrætədʒi/', example: 'Our marketing strategy needs revision.' },
 ];
+
+// ============================================
+// AI SERVICE - Gemini API Integration
+// ============================================
+const AIService = {
+  async getAIHelp(word, meaning, apiKey) {
+    const prompt = `You are a vocabulary learning assistant. For the word "${word}" (meaning: ${meaning}), provide:
+1. A natural example sentence using this word
+2. Part of speech (noun, verb, adjective, etc.)
+3. A memory tip or mnemonic to remember this word
+4. Common collocations (2-3 word combinations)
+
+Respond in JSON format only:
+{
+  "example": "sentence here",
+  "partOfSpeech": "verb",
+  "memoryTip": "tip here",
+  "collocations": ["phrase 1", "phrase 2"]
+}`;
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 500,
+            }
+          })
+        }
+      );
+
+      if (!response.ok) throw new Error('API request failed');
+      
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      
+      // Parse JSON from response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      throw new Error('Invalid response format');
+    } catch (error) {
+      console.error('AI Service Error:', error);
+      throw error;
+    }
+  }
+};
 
 // ============================================
 // ICON COMPONENT
 // ============================================
-const Icon = ({ name, size = 24, className = '' }) => {
+const Icon = ({ name, size = 24, className = '', fill = 'none' }) => {
   const ref = useRef(null);
   useEffect(() => {
     if (!ref.current || !window.lucide) return;
@@ -112,7 +275,7 @@ const Icon = ({ name, size = 24, className = '' }) => {
       svg.setAttribute('width', size);
       svg.setAttribute('height', size);
       svg.setAttribute('viewBox', '0 0 24 24');
-      svg.setAttribute('fill', 'none');
+      svg.setAttribute('fill', fill);
       svg.setAttribute('stroke', 'currentColor');
       svg.setAttribute('stroke-width', '2');
       svg.setAttribute('stroke-linecap', 'round');
@@ -127,9 +290,31 @@ const Icon = ({ name, size = 24, className = '' }) => {
       }
       ref.current.appendChild(svg);
     }
-  }, [name, size]);
+  }, [name, size, fill]);
   return <span ref={ref} className={`inline-flex items-center justify-center ${className}`} />;
 };
+
+// ============================================
+// SKELETON LOADER COMPONENTS
+// ============================================
+const SkeletonCard = () => (
+  <div className="glass-light rounded-2xl p-5 animate-pulse">
+    <div className="skeleton h-6 w-3/4 rounded mb-3"></div>
+    <div className="skeleton h-4 w-1/2 rounded"></div>
+  </div>
+);
+
+const SkeletonStats = () => (
+  <div className="glass rounded-3xl p-6 animate-pulse">
+    <div className="flex justify-between items-center">
+      <div>
+        <div className="skeleton h-6 w-32 rounded mb-3"></div>
+        <div className="skeleton h-8 w-24 rounded-full"></div>
+      </div>
+      <div className="skeleton w-20 h-20 rounded-full"></div>
+    </div>
+  </div>
+);
 
 // ============================================
 // CLOUD SYNC SERVICE
@@ -161,7 +346,7 @@ const CloudSync = {
   },
   
   setSyncKey(key) {
-    const cleanKey = key ? key.trim() : null; // Trim spaces
+    const cleanKey = key ? key.trim().replace(/[.#$\/\[\]]/g, '_') : null;
     this.customKey = cleanKey;
     if (cleanKey) localStorage.setItem('vocab_sync_key', cleanKey);
     else localStorage.removeItem('vocab_sync_key');
@@ -195,17 +380,15 @@ const CloudSync = {
     console.log("Listening to:", path);
     const ref = this.db.ref(path);
     
-    // Permission check
     const errorHandler = (err) => {
       console.error("Listener error:", err);
-      if(err.code === 'PERMISSION_DENIED' && onError) onError('Cloud Sync Error: Permission Denied. Please set Rules to true.');
+      if(err.code === 'PERMISSION_DENIED' && onError) onError('Cloud Sync Error: Permission Denied');
     };
 
     const handler = (snapshot) => {
       if (snapshot.exists()) {
         cb(snapshot.val());
       } else {
-        // Init empty data if path valid but empty
         cb({ decks: [], cards: [], reviews: [], stats: {streak:0} });
       }
     };
@@ -220,6 +403,9 @@ const CloudSync = {
   }
 };
 
+// ============================================
+// LOCAL DATABASE SERVICE
+// ============================================
 const DB = {
   get: (k, def) => { try { return JSON.parse(localStorage.getItem(`vocab_${k}`)) || def; } catch { return def; } },
   set: (k, v) => localStorage.setItem(`vocab_${k}`, JSON.stringify(v)),
@@ -227,11 +413,15 @@ const DB = {
   setApiKey: (k) => localStorage.setItem('vocab_api_key', k),
 };
 
+// ============================================
+// UTILITIES
+// ============================================
 const speak = (text) => {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'en-US';
+  u.rate = 0.9;
   window.speechSynthesis.speak(u);
 };
 
@@ -243,6 +433,21 @@ const parseCSV = (txt) => {
   }).filter(x => x);
 };
 
+const exportToCSV = (cards, deckTitle) => {
+  const header = 'word,meaning,phonetic,example\n';
+  const rows = cards.map(c => 
+    `"${c.front}","${c.back}","${c.phonetic || ''}","${c.example || ''}"`
+  ).join('\n');
+  
+  const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${deckTitle.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
 const SRS = {
   calculate(card, q) {
     let { repetitions=0, intervalIndex=0, easeFactor=2.5 } = card;
@@ -251,11 +456,11 @@ const SRS = {
       repetitions++;
       if(repetitions===1) intervalIndex=0;
       else if(repetitions===2) intervalIndex=1;
-      else intervalIndex = Math.min(intervalIndex+1, 3);
+      else intervalIndex = Math.min(intervalIndex+1, 4);
     }
     const eq = q+2;
     easeFactor = Math.max(1.3, easeFactor+(0.1-(5-eq)*(0.08+(5-eq)*0.02)));
-    if(q===3) intervalIndex = Math.min(intervalIndex+1, 3);
+    if(q===3) intervalIndex = Math.min(intervalIndex+1, 4);
     const nextDate = new Date();
     nextDate.setDate(nextDate.getDate() + CONFIG.INTERVALS[intervalIndex]);
     return { repetitions, intervalIndex, easeFactor, nextReviewAt: nextDate.toISOString() };
@@ -265,20 +470,155 @@ const SRS = {
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
+const DECK_COLORS = ['mint', 'coral', 'gold', 'lavender'];
+const getColorClasses = (color) => {
+  const colors = {
+    mint: { bg: 'bg-mint/20', border: 'border-mint/30', text: 'text-mint', glow: 'glow-mint' },
+    coral: { bg: 'bg-coral/20', border: 'border-coral/30', text: 'text-coral', glow: 'glow-coral' },
+    gold: { bg: 'bg-gold/20', border: 'border-gold/30', text: 'text-gold', glow: 'glow-gold' },
+    lavender: { bg: 'bg-lavender/20', border: 'border-lavender/30', text: 'text-lavender', glow: 'glow-lavender' },
+  };
+  return colors[color] || colors.mint;
+};
+
+// ============================================
+// CONFIRM DIALOG COMPONENT
+// ============================================
+const ConfirmDialog = ({ isOpen, title, message, onConfirm, onCancel, type = 'danger' }) => {
+  if (!isOpen) return null;
+  
+  const colors = {
+    danger: { btn: 'bg-coral hover:bg-coral/80', icon: 'trash-2' },
+    warning: { btn: 'bg-gold hover:bg-gold/80 text-midnight', icon: 'alert-triangle' },
+    info: { btn: 'bg-mint hover:bg-mint/80 text-midnight', icon: 'info' },
+  };
+  
+  return (
+    <div className="fixed inset-0 z-[60] modal-backdrop flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="glass rounded-3xl p-6 w-full max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
+        <div className={`w-16 h-16 rounded-full ${colors[type].btn} flex items-center justify-center mx-auto mb-4`}>
+          <Icon name={colors[type].icon} size={32} className={type === 'danger' ? 'text-white' : 'text-midnight'} />
+        </div>
+        <h3 className="text-xl font-bold text-center mb-2">{title}</h3>
+        <p className="text-slate-400 text-center mb-6">{message}</p>
+        <div className="flex gap-3">
+          <button 
+            onClick={onCancel}
+            className="flex-1 glass-light py-3 rounded-xl font-semibold btn-press"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={onConfirm}
+            className={`flex-1 ${colors[type].btn} py-3 rounded-xl font-semibold btn-press`}
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================
+// OFFLINE INDICATOR COMPONENT
+// ============================================
+const OfflineIndicator = ({ isOffline }) => {
+  if (!isOffline) return null;
+  
+  return (
+    <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
+      <div className="offline-badge px-4 py-2 rounded-full flex items-center gap-2 text-sm font-semibold shadow-lg">
+        <Icon name="wifi-off" size={16} />
+        Offline Mode
+      </div>
+    </div>
+  );
+};
+
+// ============================================
+// SEARCH BAR COMPONENT
+// ============================================
+const SearchBar = ({ value, onChange, placeholder }) => (
+  <div className="relative">
+    <Icon name="search" size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+    <input
+      type="text"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="w-full glass-light pl-12 pr-4 py-3 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-mint/50 transition-all"
+    />
+    {value && (
+      <button 
+        onClick={() => onChange('')}
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+      >
+        <Icon name="x" size={18} />
+      </button>
+    )}
+  </div>
+);
+
+// ============================================
+// CIRCULAR PROGRESS COMPONENT
+// ============================================
+const CircularProgress = ({ value, max, size = 80 }) => {
+  const radius = (size - 8) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = Math.min(value / max, 1);
+  const offset = circumference - (progress * circumference);
+  
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg className="w-full h-full transform -rotate-90">
+        <circle 
+          cx={size/2} cy={size/2} r={radius}
+          stroke="rgba(255,255,255,0.1)" 
+          strokeWidth="8" 
+          fill="none"
+        />
+        <circle 
+          cx={size/2} cy={size/2} r={radius}
+          stroke="url(#gradient)" 
+          strokeWidth="8" 
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="transition-all duration-1000 ease-out"
+        />
+        <defs>
+          <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#4ECDC4" />
+            <stop offset="100%" stopColor="#A78BFA" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-xl font-bold font-mono">{value}<span className="text-sm text-slate-400">/{max}</span></span>
+      </div>
+    </div>
+  );
+};
+
 // ============================================
 // MAIN APP
 // ============================================
 function App() {
+  // State
   const [view, setView] = useState('home');
   const [decks, setDecks] = useState([]);
   const [cards, setCards] = useState([]);
   const [reviews, setReviews] = useState([]);
-  const [stats, setStats] = useState({streak:0, totalReviews:0});
+  const [stats, setStats] = useState({ streak: 0, totalReviews: 0 });
   
   const [apiKey, setApiKey] = useState('');
   const [cloudEnabled, setCloudEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [currentSyncKey, setCurrentSyncKey] = useState(''); 
+  const [currentSyncKey, setCurrentSyncKey] = useState('');
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isLoading, setIsLoading] = useState(true);
   const syncTimer = useRef(null);
 
   const [selDeck, setSelDeck] = useState(null);
@@ -287,49 +627,86 @@ function App() {
   const [flipped, setFlipped] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiData, setAiData] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const [modals, setModals] = useState({ addDeck: false, addCard: false, import: false, settings: false });
+  const [modals, setModals] = useState({ 
+    addDeck: false, addCard: false, import: false, settings: false, editCard: false 
+  });
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, type: 'danger', title: '', message: '', onConfirm: null });
+  const [editingCard, setEditingCard] = useState(null);
   const [toast, setToast] = useState(null);
 
-  const notify = (msg, type='success') => { setToast({msg, type}); setTimeout(()=>setToast(null), 3500); };
+  const notify = (msg, type = 'success') => { 
+    setToast({ msg, type }); 
+    setTimeout(() => setToast(null), 3500); 
+  };
 
-  // 1. Initial Load
+  // Online/Offline Detection
   useEffect(() => {
-    // Load Local Data
-    const d = DB.get('decks', []);
-    if(d.length === 0) {
-      setDecks([STARTER_DECK]); setCards(STARTER_CARDS.map(c=>({...c, id:generateId(), deckId:STARTER_DECK.id})));
-    } else {
-      setDecks(d); setCards(DB.get('cards', []));
-    }
-    setReviews(DB.get('reviews', []));
-    setStats(DB.get('stats', {streak:0}));
-    setApiKey(DB.getApiKey());
+    const handleOnline = () => { setIsOffline(false); notify('Back online!', 'success'); };
+    const handleOffline = () => { setIsOffline(true); notify('You are offline', 'warning'); };
     
-    // Auto Connect
-    initCloud(FIREBASE_CONFIG);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Initial Load
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      
+      // Load from localStorage first (offline support)
+      const localDecks = DB.get('decks', []);
+      const localCards = DB.get('cards', []);
+      
+      if (localDecks.length === 0) {
+        setDecks([STARTER_DECK]);
+        setCards(STARTER_CARDS.map(c => ({ ...c, id: generateId(), deckId: STARTER_DECK.id })));
+      } else {
+        setDecks(localDecks);
+        setCards(localCards);
+      }
+      
+      setReviews(DB.get('reviews', []));
+      setStats(DB.get('stats', { streak: 0, totalReviews: 0 }));
+      setApiKey(DB.getApiKey());
+      
+      // Try cloud sync
+      if (navigator.onLine) {
+        await initCloud(FIREBASE_CONFIG);
+      }
+      
+      // Simulate minimum loading time for UX
+      setTimeout(() => setIsLoading(false), 800);
+    };
+    
+    loadData();
   }, []);
 
   const initCloud = async (cfg) => {
-    if(await CloudSync.init(cfg)) {
+    if (await CloudSync.init(cfg)) {
       setCloudEnabled(true);
-      const key = CloudSync.getCurrentId();
-      setCurrentSyncKey(key);
+      setCurrentSyncKey(CloudSync.getCurrentId());
     }
   };
 
-  // 3. Realtime Subscription
+  // Realtime Subscription
   useEffect(() => {
-    if(!cloudEnabled) return;
+    if (!cloudEnabled || isOffline) return;
 
     setSyncing(true);
     const unsubscribe = CloudSync.onDataChange(
       (d) => {
-        if(d) {
-          setDecks(d.decks || []);
-          setCards(d.cards || []);
-          setReviews(d.reviews || []);
-          if(d.stats) setStats(d.stats);
+        if (d) {
+          if (d.decks?.length) setDecks(d.decks);
+          if (d.cards?.length) setCards(d.cards);
+          if (d.reviews?.length) setReviews(d.reviews);
+          if (d.stats) setStats(d.stats);
         }
         setSyncing(false);
       },
@@ -339,323 +716,908 @@ function App() {
       }
     );
 
-    return () => { unsubscribe(); };
-  }, [cloudEnabled, currentSyncKey]);
+    return () => unsubscribe();
+  }, [cloudEnabled, currentSyncKey, isOffline]);
 
-  // 4. Auto Save
+  // Auto Save
   const saveData = useCallback(() => {
-    DB.set('decks', decks); DB.set('cards', cards); DB.set('reviews', reviews); DB.set('stats', stats);
+    // Always save locally
+    DB.set('decks', decks);
+    DB.set('cards', cards);
+    DB.set('reviews', reviews);
+    DB.set('stats', stats);
     
-    if(cloudEnabled && !syncing) {
+    // Cloud sync with debounce
+    if (cloudEnabled && !syncing && !isOffline) {
       clearTimeout(syncTimer.current);
       syncTimer.current = setTimeout(() => {
-        CloudSync.saveToCloud({decks, cards, reviews, stats}, (errMsg) => notify(errMsg, 'error'));
+        CloudSync.saveToCloud({ decks, cards, reviews, stats }, (errMsg) => notify(errMsg, 'error'));
       }, 2000);
     }
-  }, [decks, cards, reviews, stats, cloudEnabled, syncing]);
-
-  useEffect(() => saveData(), [decks, cards, reviews, stats]);
+  }, [decks, cards, reviews, stats, cloudEnabled, syncing, isOffline]);
 
   useEffect(() => {
-    document.body.classList.toggle('modal-open', Object.values(modals).some(v=>v));
-  }, [modals]);
+    if (!isLoading) saveData();
+  }, [decks, cards, reviews, stats, isLoading]);
 
-  const toggleModal = (n, v) => setModals(prev => ({...prev, [n]:v}));
+  useEffect(() => {
+    document.body.classList.toggle('modal-open', Object.values(modals).some(v => v) || confirmDialog.isOpen);
+  }, [modals, confirmDialog]);
+
+  const toggleModal = (n, v) => setModals(prev => ({ ...prev, [n]: v }));
 
   // Actions
-  const createDeck = (t) => {
-    setDecks([...decks, {id:generateId(), title:t, createdAt:new Date().toISOString()}]);
-    toggleModal('addDeck', false); notify('Deck Created');
+  const createDeck = (title) => {
+    const color = DECK_COLORS[decks.length % DECK_COLORS.length];
+    setDecks([...decks, { id: generateId(), title, createdAt: new Date().toISOString(), color }]);
+    toggleModal('addDeck', false);
+    notify('Deck created! 🎉');
   };
-  const addCard = (d) => {
-    setCards([...cards, {id:generateId(), deckId:selDeck.id, ...d, ...SRS.calculate({}, 2)}]);
-    toggleModal('addCard', false); notify('Card Added');
+
+  const deleteDeck = (deckId) => {
+    setConfirmDialog({
+      isOpen: true,
+      type: 'danger',
+      title: 'Delete Deck?',
+      message: 'This will permanently delete the deck and all its cards.',
+      onConfirm: () => {
+        setDecks(decks.filter(d => d.id !== deckId));
+        setCards(cards.filter(c => c.deckId !== deckId));
+        setConfirmDialog({ isOpen: false });
+        setView('library');
+        notify('Deck deleted');
+      }
+    });
   };
+
+  const addCard = (data) => {
+    setCards([...cards, { id: generateId(), deckId: selDeck.id, ...data, ...SRS.calculate({}, 2) }]);
+    toggleModal('addCard', false);
+    notify('Card added! ✨');
+  };
+
+  const updateCard = (id, data) => {
+    setCards(cards.map(c => c.id === id ? { ...c, ...data } : c));
+    toggleModal('editCard', false);
+    setEditingCard(null);
+    notify('Card updated');
+  };
+
+  const deleteCard = (id) => {
+    setConfirmDialog({
+      isOpen: true,
+      type: 'danger',
+      title: 'Delete Card?',
+      message: 'This card will be permanently removed.',
+      onConfirm: () => {
+        setCards(cards.filter(c => c.id !== id));
+        setConfirmDialog({ isOpen: false });
+        notify('Card deleted');
+      }
+    });
+  };
+
   const importCSV = (txt) => {
-    const newC = parseCSV(txt).map(c => ({id:generateId(), deckId:selDeck.id, ...c, ...SRS.calculate({}, 2)}));
-    if(newC.length) { setCards([...cards, ...newC]); toggleModal('import', false); notify(`Imported ${newC.length}`); }
+    const newCards = parseCSV(txt).map(c => ({ 
+      id: generateId(), 
+      deckId: selDeck.id, 
+      ...c, 
+      ...SRS.calculate({}, 2) 
+    }));
+    if (newCards.length) {
+      setCards([...cards, ...newCards]);
+      toggleModal('import', false);
+      notify(`Imported ${newCards.length} cards! 📚`);
+    } else {
+      notify('No valid cards found', 'error');
+    }
   };
-  const deleteCard = (id) => setCards(cards.filter(c => c.id !== id));
-  
-  const startStudy = (deckId=null) => {
-    const pool = deckId ? cards.filter(c => c.deckId === deckId && SRS.isDue(c)) : cards.filter(SRS.isDue);
-    if(!pool.length) return notify('No cards due!', 'info');
-    setStudyQ(pool.sort(()=>Math.random()-0.5));
-    setCurrCard(0); setFlipped(false); setAiData(null); setView('study');
+
+  const handleExport = () => {
+    const deckCards = cards.filter(c => c.deckId === selDeck.id);
+    if (deckCards.length === 0) {
+      notify('No cards to export', 'warning');
+      return;
+    }
+    exportToCSV(deckCards, selDeck.title);
+    notify('Exported successfully! 📤');
+  };
+
+  const startStudy = (deckId = null) => {
+    const pool = deckId 
+      ? cards.filter(c => c.deckId === deckId && SRS.isDue(c))
+      : cards.filter(SRS.isDue);
+    
+    if (!pool.length) {
+      notify('No cards due for review!', 'info');
+      return;
+    }
+    
+    setStudyQ(pool.sort(() => Math.random() - 0.5));
+    setCurrCard(0);
+    setFlipped(false);
+    setAiData(null);
+    setView('study');
   };
 
   const handleReview = (q) => {
     const c = studyQ[currCard];
-    const u = SRS.calculate(c, q);
-    setCards(cards.map(x => x.id === c.id ? {...x, ...u} : x));
-    setReviews([...reviews, {cardId:c.id, q, date:new Date().toISOString()}]);
-    if(currCard < studyQ.length - 1) {
-      setCurrCard(currCard+1); setFlipped(false); setAiData(null);
+    const updated = SRS.calculate(c, q);
+    
+    setCards(cards.map(x => x.id === c.id ? { ...x, ...updated } : x));
+    setReviews([...reviews, { cardId: c.id, q, date: new Date().toISOString() }]);
+    
+    // Update stats
+    const today = new Date().toDateString();
+    const todayReviews = reviews.filter(r => new Date(r.date).toDateString() === today).length + 1;
+    
+    if (todayReviews >= CONFIG.DAILY_GOAL && stats.lastGoalDate !== today) {
+      setStats(prev => ({ 
+        ...prev, 
+        streak: prev.streak + 1, 
+        totalReviews: prev.totalReviews + 1,
+        lastGoalDate: today 
+      }));
     } else {
-      notify('Session Complete! 🎉'); setView('home');
+      setStats(prev => ({ ...prev, totalReviews: prev.totalReviews + 1 }));
+    }
+    
+    if (currCard < studyQ.length - 1) {
+      setCurrCard(currCard + 1);
+      setFlipped(false);
+      setAiData(null);
+    } else {
+      notify('Session complete! 🎉');
+      setView('home');
     }
   };
 
   const handleAI = async () => {
-    if(!apiKey) return toggleModal('settings', true);
+    if (!apiKey) {
+      toggleModal('settings', true);
+      notify('Please add your API key first', 'warning');
+      return;
+    }
+    
     setAiLoading(true);
     const c = studyQ[currCard];
+    
     try {
       const data = await AIService.getAIHelp(c.front, c.back, apiKey);
       setAiData(data);
-      if(!c.example && data.example) setCards(cards.map(x=>x.id===c.id ? {...x, example:data.example} : x));
-    } catch(e){ notify('AI Error', 'error'); }
+      
+      // Auto-save example if card doesn't have one
+      if (!c.example && data.example) {
+        setCards(cards.map(x => x.id === c.id ? { ...x, example: data.example } : x));
+      }
+    } catch (e) {
+      notify('AI request failed', 'error');
+    }
+    
     setAiLoading(false);
   };
 
   const updateSyncKey = (newKey) => {
-    // Basic cleanup
-    const cleanKey = newKey ? newKey.trim() : '';
-    if(!cleanKey) return;
+    const cleanKey = newKey?.trim();
+    if (!cleanKey) return;
     CloudSync.setSyncKey(cleanKey);
-    setCurrentSyncKey(cleanKey); 
-    notify('Sync Key Updated. Reloading...');
+    setCurrentSyncKey(cleanKey);
+    notify('Sync key updated! Reconnecting...');
   };
 
+  // Computed Values
   const dueCount = useMemo(() => cards.filter(SRS.isDue).length, [cards]);
-  const progress = Math.min(reviews.filter(r=>new Date(r.date).toDateString()===new Date().toDateString()).length, CONFIG.DAILY_GOAL);
+  const todayProgress = useMemo(() => {
+    const today = new Date().toDateString();
+    return Math.min(reviews.filter(r => new Date(r.date).toDateString() === today).length, CONFIG.DAILY_GOAL);
+  }, [reviews]);
 
-  const CircularChart = ({val}) => (
-    <div className="relative w-20 h-20 flex items-center justify-center">
-      <svg className="w-full h-full transform -rotate-90">
-        <circle cx="40" cy="40" r="36" stroke="#E2E8F0" strokeWidth="8" fill="none"/>
-        <circle cx="40" cy="40" r="36" stroke="#D97706" strokeWidth="8" fill="none" strokeDasharray={226} strokeDashoffset={226 - (226 * val)/CONFIG.DAILY_GOAL} className="transition-all duration-1000"/>
-      </svg>
-      <span className="absolute text-xl font-bold">{val}/{CONFIG.DAILY_GOAL}</span>
-    </div>
-  );
+  const filteredCards = useMemo(() => {
+    if (!selDeck) return [];
+    const deckCards = cards.filter(c => c.deckId === selDeck.id);
+    if (!searchQuery) return deckCards;
+    
+    const query = searchQuery.toLowerCase();
+    return deckCards.filter(c => 
+      c.front.toLowerCase().includes(query) || 
+      c.back.toLowerCase().includes(query)
+    );
+  }, [cards, selDeck, searchQuery]);
 
-  return (
-    <div className="min-h-screen bg-cream text-slate-900 pb-safe">
-      
-      <div className="fixed top-0 w-full bg-white/80 backdrop-blur-md z-40 border-b border-slate-100 pt-safe px-4 pb-3 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-primary flex items-center gap-2" onClick={()=>setView('home')}>
-          <Icon name="book-open" size={24}/> VocabLab
-        </h1>
-        <div className="flex gap-3">
-          {cloudEnabled && <Icon name={syncing ? 'loader-2' : 'cloud-check'} size={20} className={syncing ? 'animate-spin text-blue-500' : 'text-green-500'}/>}
-          <button onClick={()=>toggleModal('settings', true)}><Icon name="settings" size={24} className="text-slate-400 hover:text-slate-700"/></button>
+  // Loading Screen
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <div className="w-20 h-20 mb-6 animate-float">
+          <svg viewBox="0 0 100 100" className="w-full h-full">
+            <text y=".9em" fontSize="80">📚</text>
+          </svg>
+        </div>
+        <h1 className="text-2xl font-bold gradient-text mb-2">VocabLab</h1>
+        <p className="text-slate-400 mb-6">Loading your vocabulary...</p>
+        <div className="w-48 h-1 bg-slate-700 rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-mint to-lavender animate-shimmer" style={{ width: '60%' }}></div>
         </div>
       </div>
+    );
+  }
 
-      <div className="pt-24 px-4 pb-24 max-w-md mx-auto">
-        {view === 'home' && (
-          <div className="animate-fade-in space-y-6">
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex justify-between items-center">
-              <div>
-                <h2 className="text-lg font-bold">Daily Goal</h2>
-                <div className="mt-2 flex items-center gap-2 bg-amber-50 text-amber-700 px-3 py-1 rounded-full w-fit text-sm">
-                  <Icon name="flame" size={16}/> {stats.streak} Day Streak
-                </div>
-              </div>
-              <CircularChart val={progress}/>
-            </div>
-            {dueCount > 0 ? (
-              <button onClick={()=>startStudy()} className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-amber-200 active:scale-95 transition-transform flex items-center justify-center gap-2">
-                <Icon name="play" fill="currentColor"/> Study {dueCount} Due Cards
-              </button>
-            ) : (
-              <div className="bg-emerald-50 text-emerald-700 p-6 rounded-3xl text-center border border-emerald-100">
-                <Icon name="check-circle" size={40} className="mx-auto mb-2"/>
-                <p className="font-bold">All caught up!</p>
+  return (
+    <div className="min-h-screen text-slate-100 pb-safe">
+      <OfflineIndicator isOffline={isOffline} />
+      
+      {/* Header */}
+      <header className="fixed top-0 w-full glass z-40 pt-safe px-4 pb-3">
+        <div className="flex justify-between items-center max-w-lg mx-auto">
+          <button onClick={() => setView('home')} className="flex items-center gap-2">
+            <span className="text-2xl">📚</span>
+            <h1 className="text-xl font-bold gradient-text">VocabLab</h1>
+          </button>
+          <div className="flex items-center gap-3">
+            {cloudEnabled && (
+              <div className={`p-2 rounded-full ${syncing ? 'bg-blue-500/20' : isOffline ? 'bg-coral/20' : 'bg-mint/20'}`}>
+                <Icon 
+                  name={syncing ? 'loader-2' : isOffline ? 'cloud-off' : 'cloud'} 
+                  size={18} 
+                  className={`${syncing ? 'animate-spin text-blue-400' : isOffline ? 'text-coral' : 'text-mint'}`}
+                />
               </div>
             )}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
-                <div className="text-2xl font-bold">{cards.length}</div>
-                <div className="text-xs text-slate-400 uppercase">Cards</div>
-              </div>
-              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
-                <div className="text-2xl font-bold">{decks.length}</div>
-                <div className="text-xs text-slate-400 uppercase">Decks</div>
+            <button 
+              onClick={() => toggleModal('settings', true)}
+              className="p-2 rounded-full glass-light hover:bg-white/10 transition-colors"
+            >
+              <Icon name="settings" size={20} className="text-slate-300" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="pt-24 px-4 pb-28 max-w-lg mx-auto">
+        
+        {/* HOME VIEW */}
+        {view === 'home' && (
+          <div className="animate-fade-in space-y-6">
+            {/* Stats Card */}
+            <div className="glass rounded-3xl p-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-300 mb-2">Daily Goal</h2>
+                  <div className="flex items-center gap-2 bg-gradient-to-r from-coral/20 to-gold/20 px-4 py-2 rounded-full">
+                    <Icon name="flame" size={18} className="text-coral" />
+                    <span className="font-bold text-coral">{stats.streak} Day Streak</span>
+                  </div>
+                </div>
+                <CircularProgress value={todayProgress} max={CONFIG.DAILY_GOAL} />
               </div>
             </div>
+
+            {/* Study Button */}
+            {dueCount > 0 ? (
+              <button 
+                onClick={() => startStudy()} 
+                className="w-full bg-gradient-to-r from-mint to-lavender text-midnight py-5 rounded-2xl font-bold text-lg shadow-lg glow-mint btn-press flex items-center justify-center gap-3"
+              >
+                <Icon name="play" size={24} fill="currentColor" />
+                Study {dueCount} Due Cards
+              </button>
+            ) : (
+              <div className="glass rounded-3xl p-8 text-center border border-mint/20">
+                <div className="w-16 h-16 bg-mint/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Icon name="check-circle" size={32} className="text-mint" />
+                </div>
+                <h3 className="text-xl font-bold mb-2">All caught up!</h3>
+                <p className="text-slate-400">No cards due for review. Great job! 🎉</p>
+              </div>
+            )}
+
+            {/* Quick Stats */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="glass-light rounded-2xl p-4 text-center">
+                <div className="text-2xl font-bold gradient-text">{cards.length}</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wide">Cards</div>
+              </div>
+              <div className="glass-light rounded-2xl p-4 text-center">
+                <div className="text-2xl font-bold gradient-text">{decks.length}</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wide">Decks</div>
+              </div>
+              <div className="glass-light rounded-2xl p-4 text-center">
+                <div className="text-2xl font-bold gradient-text">{stats.totalReviews || 0}</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wide">Reviews</div>
+              </div>
+            </div>
+
+            {/* Recent Activity */}
+            {reviews.length > 0 && (
+              <div className="glass-light rounded-2xl p-4">
+                <h3 className="text-sm font-semibold text-slate-400 mb-3 flex items-center gap-2">
+                  <Icon name="activity" size={16} />
+                  Recent Activity
+                </h3>
+                <div className="space-y-2">
+                  {reviews.slice(-5).reverse().map((r, i) => {
+                    const card = cards.find(c => c.id === r.cardId);
+                    if (!card) return null;
+                    return (
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <span className="text-slate-300">{card.front}</span>
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          r.q === 0 ? 'bg-coral/20 text-coral' :
+                          r.q === 1 ? 'bg-gold/20 text-gold' :
+                          r.q === 2 ? 'bg-mint/20 text-mint' :
+                          'bg-lavender/20 text-lavender'
+                        }`}>
+                          {['Again', 'Hard', 'Good', 'Easy'][r.q]}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
+        {/* LIBRARY VIEW */}
         {view === 'library' && (
           <div className="animate-fade-in space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold">My Decks</h2>
-              <button onClick={()=>toggleModal('addDeck', true)}><Icon name="plus-circle" size={32} className="text-primary"/></button>
+              <button 
+                onClick={() => toggleModal('addDeck', true)}
+                className="p-2 rounded-full bg-gradient-to-r from-mint to-lavender"
+              >
+                <Icon name="plus" size={24} className="text-midnight" />
+              </button>
             </div>
-            {decks.map(d => (
-              <div key={d.id} onClick={()=>{setSelDeck(d); setView('deck')}} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm active:bg-slate-50 flex justify-between items-center">
-                <div>
-                  <h3 className="font-bold text-lg">{d.title}</h3>
-                  <p className="text-sm text-slate-400">{cards.filter(c=>c.deckId===d.id).length} cards</p>
-                </div>
-                <Icon name="chevron-right" className="text-slate-300"/>
+
+            {decks.length === 0 ? (
+              <div className="glass-light rounded-3xl p-8 text-center">
+                <Icon name="folder-plus" size={48} className="text-slate-500 mx-auto mb-4" />
+                <p className="text-slate-400">No decks yet. Create your first deck!</p>
               </div>
-            ))}
+            ) : (
+              <div className="space-y-3">
+                {decks.map((d, idx) => {
+                  const colors = getColorClasses(d.color || DECK_COLORS[idx % DECK_COLORS.length]);
+                  const deckCards = cards.filter(c => c.deckId === d.id);
+                  const dueCards = deckCards.filter(SRS.isDue).length;
+                  
+                  return (
+                    <div 
+                      key={d.id}
+                      onClick={() => { setSelDeck(d); setSearchQuery(''); setView('deck'); }}
+                      className={`glass-light rounded-2xl p-5 border ${colors.border} hover:${colors.bg} transition-all cursor-pointer btn-press`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-bold text-lg mb-1">{d.title}</h3>
+                          <p className="text-sm text-slate-400">{deckCards.length} cards</p>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          {dueCards > 0 && (
+                            <span className={`${colors.bg} ${colors.text} px-3 py-1 rounded-full text-sm font-semibold`}>
+                              {dueCards} due
+                            </span>
+                          )}
+                          <Icon name="chevron-right" size={20} className="text-slate-500" />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
+        {/* DECK VIEW */}
         {view === 'deck' && selDeck && (
           <div className="animate-fade-in space-y-4">
-            <button onClick={()=>setView('library')} className="flex items-center text-slate-400 gap-1 text-sm mb-4"><Icon name="arrow-left" size={16}/> Back</button>
-            <div className="flex justify-between items-end">
-              <h1 className="text-3xl font-bold">{selDeck.title}</h1>
+            <button 
+              onClick={() => setView('library')} 
+              className="flex items-center text-slate-400 gap-1 text-sm mb-2 hover:text-white transition-colors"
+            >
+              <Icon name="arrow-left" size={16} /> Back to Library
+            </button>
+            
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h1 className="text-2xl font-bold">{selDeck.title}</h1>
+                <p className="text-slate-400">{cards.filter(c => c.deckId === selDeck.id).length} cards</p>
+              </div>
               <div className="flex gap-2">
-                <button onClick={()=>toggleModal('import', true)} className="bg-slate-100 p-2 rounded-xl text-slate-600"><Icon name="upload" size={20}/></button>
-                <button onClick={()=>toggleModal('addCard', true)} className="bg-primary text-white p-2 rounded-xl"><Icon name="plus" size={20}/></button>
+                <button 
+                  onClick={handleExport}
+                  className="p-2 glass-light rounded-xl hover:bg-white/10 transition-colors"
+                  title="Export CSV"
+                >
+                  <Icon name="download" size={20} className="text-slate-300" />
+                </button>
+                <button 
+                  onClick={() => toggleModal('import', true)}
+                  className="p-2 glass-light rounded-xl hover:bg-white/10 transition-colors"
+                  title="Import CSV"
+                >
+                  <Icon name="upload" size={20} className="text-slate-300" />
+                </button>
+                <button 
+                  onClick={() => toggleModal('addCard', true)}
+                  className="p-2 bg-gradient-to-r from-mint to-lavender rounded-xl"
+                  title="Add Card"
+                >
+                  <Icon name="plus" size={20} className="text-midnight" />
+                </button>
               </div>
             </div>
+
+            {/* Search */}
+            <SearchBar 
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search cards..."
+            />
+
+            {/* Study Deck Button */}
+            {cards.filter(c => c.deckId === selDeck.id && SRS.isDue(c)).length > 0 && (
+              <button 
+                onClick={() => startStudy(selDeck.id)}
+                className="w-full glass-light border border-mint/30 py-3 rounded-xl font-semibold text-mint flex items-center justify-center gap-2 btn-press"
+              >
+                <Icon name="play" size={18} />
+                Study {cards.filter(c => c.deckId === selDeck.id && SRS.isDue(c)).length} Due
+              </button>
+            )}
+
+            {/* Cards List */}
             <div className="space-y-2 pb-10">
-              {cards.filter(c=>c.deckId===selDeck.id).map(c => (
-                <div key={c.id} className="bg-white p-4 rounded-xl border border-slate-100 flex justify-between items-start">
-                  <div>
-                    <div className="font-bold text-lg">{c.front}</div>
-                    <div className="text-slate-500">{c.back}</div>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <button onClick={()=>speak(c.front)} className="text-slate-400"><Icon name="volume-2" size={18}/></button>
-                    <button onClick={()=>deleteCard(c.id)} className="text-red-400"><Icon name="trash-2" size={18}/></button>
-                  </div>
+              {filteredCards.length === 0 ? (
+                <div className="glass-light rounded-2xl p-8 text-center">
+                  <Icon name="search-x" size={40} className="text-slate-500 mx-auto mb-3" />
+                  <p className="text-slate-400">
+                    {searchQuery ? 'No cards match your search' : 'No cards in this deck yet'}
+                  </p>
                 </div>
-              ))}
+              ) : (
+                filteredCards.map(c => (
+                  <div 
+                    key={c.id} 
+                    className="glass-light rounded-xl p-4 flex justify-between items-start"
+                  >
+                    <div 
+                      className="flex-1 cursor-pointer"
+                      onClick={() => { setEditingCard(c); toggleModal('editCard', true); }}
+                    >
+                      <div className="font-semibold text-lg">{c.front}</div>
+                      <div className="text-slate-400">{c.back}</div>
+                      {c.phonetic && <div className="text-xs text-slate-500 mt-1">{c.phonetic}</div>}
+                    </div>
+                    <div className="flex flex-col gap-2 ml-3">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); speak(c.front); }}
+                        className="p-2 glass-light rounded-lg hover:bg-white/10 transition-colors"
+                      >
+                        <Icon name="volume-2" size={16} className="text-slate-400" />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); deleteCard(c.id); }}
+                        className="p-2 glass-light rounded-lg hover:bg-coral/20 transition-colors"
+                      >
+                        <Icon name="trash-2" size={16} className="text-coral" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
+
+            {/* Delete Deck Button */}
+            <button 
+              onClick={() => deleteDeck(selDeck.id)}
+              className="w-full py-3 rounded-xl text-coral border border-coral/30 hover:bg-coral/10 transition-colors mt-4"
+            >
+              Delete Deck
+            </button>
           </div>
         )}
 
+        {/* STUDY VIEW */}
         {view === 'study' && studyQ.length > 0 && (
-          <div className="animate-fade-in h-full flex flex-col">
-            <div className="flex justify-between items-center mb-4 text-slate-400">
-              <button onClick={()=>setView('home')}><Icon name="x"/></button>
-              <span>{currCard+1} / {studyQ.length}</span>
+          <div className="animate-fade-in flex flex-col" style={{ minHeight: 'calc(100vh - 200px)' }}>
+            {/* Progress */}
+            <div className="flex justify-between items-center mb-6">
+              <button 
+                onClick={() => setView('home')}
+                className="p-2 glass-light rounded-xl"
+              >
+                <Icon name="x" size={20} />
+              </button>
+              <div className="flex items-center gap-3">
+                <div className="text-sm text-slate-400">
+                  {currCard + 1} / {studyQ.length}
+                </div>
+                <div className="w-32 h-2 bg-slate-700 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-mint to-lavender transition-all duration-500"
+                    style={{ width: `${((currCard + 1) / studyQ.length) * 100}%` }}
+                  />
+                </div>
+              </div>
             </div>
-            <div 
-              onClick={()=>!flipped && setFlipped(true)}
-              className={`flex-1 bg-white rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center justify-center p-8 text-center transition-all duration-300 transform ${flipped ? 'rotate-y-180' : ''}`}
-              style={{minHeight: '400px'}}
-            >
-              {!flipped ? (
-                <>
-                  <h2 className="text-4xl font-bold mb-4">{studyQ[currCard].front}</h2>
-                  <button onClick={(e)=>{e.stopPropagation(); speak(studyQ[currCard].front)}} className="p-3 bg-slate-50 rounded-full text-slate-400 mb-8"><Icon name="volume-2" size={24}/></button>
-                  <p className="text-slate-300 text-sm mt-auto">Tap to Reveal</p>
-                </>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center">
+
+            {/* Flashcard */}
+            <div className="flex-1 card-flip">
+              <div 
+                onClick={() => !flipped && setFlipped(true)}
+                className={`card-flip-inner w-full h-full ${flipped ? 'flipped' : ''}`}
+                style={{ minHeight: '400px' }}
+              >
+                {/* Front */}
+                <div className="card-front absolute inset-0 glass rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer">
+                  <h2 className="text-4xl font-bold mb-4 text-center">{studyQ[currCard].front}</h2>
+                  {studyQ[currCard].phonetic && (
+                    <p className="text-slate-400 mb-6">{studyQ[currCard].phonetic}</p>
+                  )}
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); speak(studyQ[currCard].front); }}
+                    className="p-4 glass-light rounded-full mb-8"
+                  >
+                    <Icon name="volume-2" size={28} className="text-mint" />
+                  </button>
+                  <p className="text-slate-500 text-sm animate-pulse">Tap to reveal</p>
+                </div>
+
+                {/* Back */}
+                <div className="card-back absolute inset-0 glass rounded-3xl p-6 flex flex-col items-center overflow-y-auto">
                   <p className="text-slate-400 text-sm mb-2">{studyQ[currCard].front}</p>
-                  <h2 className="text-3xl font-bold text-primary mb-6">{studyQ[currCard].back}</h2>
+                  <h2 className="text-3xl font-bold gradient-text mb-6 text-center">{studyQ[currCard].back}</h2>
+                  
+                  {/* Example */}
                   {(aiData?.example || studyQ[currCard].example) && (
-                    <div className="bg-slate-50 p-4 rounded-xl text-slate-600 italic text-sm mb-6 w-full">
-                      "{aiData?.example || studyQ[currCard].example}"
+                    <div className="glass-light p-4 rounded-xl mb-4 w-full">
+                      <p className="text-sm text-slate-300 italic">
+                        "{aiData?.example || studyQ[currCard].example}"
+                      </p>
                     </div>
                   )}
-                  {aiData?.partOfSpeech && <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded mb-4">{aiData.partOfSpeech}</span>}
+
+                  {/* AI Data */}
+                  {aiData && (
+                    <div className="w-full space-y-3 mb-4">
+                      {aiData.partOfSpeech && (
+                        <span className="inline-block bg-lavender/20 text-lavender px-3 py-1 rounded-full text-sm">
+                          {aiData.partOfSpeech}
+                        </span>
+                      )}
+                      {aiData.memoryTip && (
+                        <div className="glass-light p-3 rounded-xl">
+                          <p className="text-xs text-slate-400 mb-1">💡 Memory Tip</p>
+                          <p className="text-sm">{aiData.memoryTip}</p>
+                        </div>
+                      )}
+                      {aiData.collocations && (
+                        <div className="flex flex-wrap gap-2">
+                          {aiData.collocations.map((col, i) => (
+                            <span key={i} className="bg-mint/20 text-mint px-2 py-1 rounded text-xs">
+                              {col}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* AI Button */}
                   {!aiData && !studyQ[currCard].example && (
-                    <button onClick={handleAI} disabled={aiLoading} className="flex items-center gap-2 bg-amber-50 text-amber-700 px-4 py-2 rounded-full text-sm font-bold">
-                      {aiLoading ? <Icon name="loader-2" className="animate-spin"/> : <Icon name="sparkles"/>} AI Explain
+                    <button 
+                      onClick={handleAI}
+                      disabled={aiLoading}
+                      className="flex items-center gap-2 bg-gradient-to-r from-gold/20 to-coral/20 text-gold px-4 py-2 rounded-full text-sm font-semibold btn-press"
+                    >
+                      {aiLoading ? (
+                        <Icon name="loader-2" size={16} className="animate-spin" />
+                      ) : (
+                        <Icon name="sparkles" size={16} />
+                      )}
+                      AI Explain
                     </button>
                   )}
                 </div>
-              )}
+              </div>
             </div>
+
+            {/* Rating Buttons */}
             {flipped && (
-              <div className="grid grid-cols-4 gap-2 mt-6 pb-safe">
-                {[{l:'Again',c:'bg-rose-500'},{l:'Hard',c:'bg-orange-500'},{l:'Good',c:'bg-emerald-500'},{l:'Easy',c:'bg-blue-500'}].map((b,i) => (
-                  <button key={i} onClick={()=>handleReview(i)} className={`${b.c} text-white py-3 rounded-xl font-bold text-sm shadow-md active:scale-95 transition-transform`}>
-                    {b.l}
+              <div className="grid grid-cols-4 gap-2 mt-6">
+                {[
+                  { label: 'Again', color: 'bg-coral', key: 0 },
+                  { label: 'Hard', color: 'bg-gold text-midnight', key: 1 },
+                  { label: 'Good', color: 'bg-mint text-midnight', key: 2 },
+                  { label: 'Easy', color: 'bg-lavender text-midnight', key: 3 },
+                ].map(btn => (
+                  <button
+                    key={btn.key}
+                    onClick={() => handleReview(btn.key)}
+                    className={`${btn.color} py-4 rounded-xl font-bold text-sm shadow-lg btn-press`}
+                  >
+                    {btn.label}
                   </button>
                 ))}
               </div>
             )}
           </div>
         )}
-      </div>
+      </main>
 
+      {/* Bottom Navigation */}
       {view !== 'study' && (
-        <div className="fixed bottom-0 w-full glass border-t border-white/50 pb-safe pt-2 px-6 flex justify-around items-center z-30">
-          <button onClick={()=>setView('home')} className={`p-2 rounded-xl transition-colors ${view==='home'?'text-primary bg-amber-50':'text-slate-400'}`}>
-            <Icon name="home" size={24}/>
-          </button>
-          <button onClick={()=>toggleModal('addDeck', true)} className="bg-primary text-white p-3 rounded-full shadow-lg -mt-8 border-4 border-cream">
-            <Icon name="plus" size={28}/>
-          </button>
-          <button onClick={()=>setView('library')} className={`p-2 rounded-xl transition-colors ${view==='library'?'text-primary bg-amber-50':'text-slate-400'}`}>
-            <Icon name="library" size={24}/>
-          </button>
-        </div>
+        <nav className="fixed bottom-0 w-full glass z-30 pb-safe pt-2 px-6">
+          <div className="flex justify-around items-center max-w-lg mx-auto">
+            <button 
+              onClick={() => setView('home')}
+              className={`p-3 rounded-xl transition-all ${view === 'home' ? 'bg-mint/20 text-mint' : 'text-slate-400'}`}
+            >
+              <Icon name="home" size={24} />
+            </button>
+            <button 
+              onClick={() => toggleModal('addDeck', true)}
+              className="p-4 bg-gradient-to-r from-mint to-lavender rounded-full -mt-8 shadow-lg glow-mint"
+            >
+              <Icon name="plus" size={28} className="text-midnight" />
+            </button>
+            <button 
+              onClick={() => setView('library')}
+              className={`p-3 rounded-xl transition-all ${view === 'library' || view === 'deck' ? 'bg-mint/20 text-mint' : 'text-slate-400'}`}
+            >
+              <Icon name="library" size={24} />
+            </button>
+          </div>
+        </nav>
       )}
 
-      {Object.values(modals).some(v=>v) && (
-        <div className="fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={()=>setModals({addDeck:false,addCard:false,import:false,settings:false})}>
-          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 modal-content pb-safe animate-slide-up" onClick={e=>e.stopPropagation()}>
-            
+      {/* MODALS */}
+      {Object.values(modals).some(v => v) && (
+        <div 
+          className="fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setModals({ addDeck: false, addCard: false, import: false, settings: false, editCard: false })}
+        >
+          <div 
+            className="glass w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 modal-content pb-safe animate-slide-up"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Add Deck Modal */}
             {modals.addDeck && (
               <>
-                <h3 className="text-xl font-bold mb-4">New Deck</h3>
-                <input id="deckTitle" className="w-full bg-slate-100 p-3 rounded-xl mb-4" placeholder="e.g. Business Vocab" autoFocus/>
-                <button onClick={()=>{
-                  const t = document.getElementById('deckTitle').value;
-                  if(t) createDeck(t);
-                }} className="w-full bg-primary text-white py-3 rounded-xl font-bold">Create</button>
+                <h3 className="text-xl font-bold mb-4">Create New Deck</h3>
+                <input 
+                  id="deckTitle"
+                  className="w-full glass-light p-4 rounded-xl mb-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-mint/50"
+                  placeholder="e.g. Business Vocabulary"
+                  autoFocus
+                />
+                <button 
+                  onClick={() => {
+                    const t = document.getElementById('deckTitle').value;
+                    if (t) createDeck(t);
+                  }}
+                  className="w-full bg-gradient-to-r from-mint to-lavender text-midnight py-4 rounded-xl font-bold btn-press"
+                >
+                  Create Deck
+                </button>
               </>
             )}
 
+            {/* Add Card Modal */}
             {modals.addCard && (
               <>
-                <h3 className="text-xl font-bold mb-4">Add Card</h3>
-                <input id="cF" className="w-full bg-slate-100 p-3 rounded-xl mb-2" placeholder="Word" autoFocus/>
-                <input id="cB" className="w-full bg-slate-100 p-3 rounded-xl mb-4" placeholder="Meaning"/>
-                <button onClick={()=>{
-                  const f=document.getElementById('cF').value, b=document.getElementById('cB').value;
-                  if(f&&b) addCard({front:f, back:b});
-                }} className="w-full bg-primary text-white py-3 rounded-xl font-bold">Add Card</button>
+                <h3 className="text-xl font-bold mb-4">Add New Card</h3>
+                <input 
+                  id="cardFront"
+                  className="w-full glass-light p-4 rounded-xl mb-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-mint/50"
+                  placeholder="Word (English)"
+                  autoFocus
+                />
+                <input 
+                  id="cardBack"
+                  className="w-full glass-light p-4 rounded-xl mb-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-mint/50"
+                  placeholder="Meaning (Thai)"
+                />
+                <input 
+                  id="cardPhonetic"
+                  className="w-full glass-light p-4 rounded-xl mb-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-mint/50"
+                  placeholder="Phonetic (optional)"
+                />
+                <input 
+                  id="cardExample"
+                  className="w-full glass-light p-4 rounded-xl mb-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-mint/50"
+                  placeholder="Example sentence (optional)"
+                />
+                <button 
+                  onClick={() => {
+                    const front = document.getElementById('cardFront').value;
+                    const back = document.getElementById('cardBack').value;
+                    const phonetic = document.getElementById('cardPhonetic').value;
+                    const example = document.getElementById('cardExample').value;
+                    if (front && back) addCard({ front, back, phonetic, example });
+                  }}
+                  className="w-full bg-gradient-to-r from-mint to-lavender text-midnight py-4 rounded-xl font-bold btn-press"
+                >
+                  Add Card
+                </button>
               </>
             )}
 
+            {/* Edit Card Modal */}
+            {modals.editCard && editingCard && (
+              <>
+                <h3 className="text-xl font-bold mb-4">Edit Card</h3>
+                <input 
+                  id="editFront"
+                  className="w-full glass-light p-4 rounded-xl mb-3 text-white"
+                  defaultValue={editingCard.front}
+                />
+                <input 
+                  id="editBack"
+                  className="w-full glass-light p-4 rounded-xl mb-3 text-white"
+                  defaultValue={editingCard.back}
+                />
+                <input 
+                  id="editPhonetic"
+                  className="w-full glass-light p-4 rounded-xl mb-3 text-white"
+                  placeholder="Phonetic"
+                  defaultValue={editingCard.phonetic || ''}
+                />
+                <input 
+                  id="editExample"
+                  className="w-full glass-light p-4 rounded-xl mb-4 text-white"
+                  placeholder="Example"
+                  defaultValue={editingCard.example || ''}
+                />
+                <button 
+                  onClick={() => {
+                    updateCard(editingCard.id, {
+                      front: document.getElementById('editFront').value,
+                      back: document.getElementById('editBack').value,
+                      phonetic: document.getElementById('editPhonetic').value,
+                      example: document.getElementById('editExample').value,
+                    });
+                  }}
+                  className="w-full bg-gradient-to-r from-mint to-lavender text-midnight py-4 rounded-xl font-bold btn-press"
+                >
+                  Save Changes
+                </button>
+              </>
+            )}
+
+            {/* Import Modal */}
             {modals.import && (
               <>
                 <h3 className="text-xl font-bold mb-2">Import CSV</h3>
-                <p className="text-xs text-slate-400 mb-4">word, meaning, phonetic, example</p>
-                <textarea id="csvIn" className="w-full bg-slate-100 p-3 rounded-xl h-32 mb-4 font-mono text-xs" placeholder="cat,แมว"></textarea>
-                <button onClick={()=>importCSV(document.getElementById('csvIn').value)} className="w-full bg-primary text-white py-3 rounded-xl font-bold">Import</button>
+                <p className="text-sm text-slate-400 mb-4">Format: word, meaning, phonetic, example</p>
+                <textarea 
+                  id="csvInput"
+                  className="w-full glass-light p-4 rounded-xl h-40 mb-4 font-mono text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-mint/50"
+                  placeholder="accomplish, ทำให้สำเร็จ, /əˈkɑːmplɪʃ/, We accomplished our goals."
+                />
+                <button 
+                  onClick={() => importCSV(document.getElementById('csvInput').value)}
+                  className="w-full bg-gradient-to-r from-mint to-lavender text-midnight py-4 rounded-xl font-bold btn-press"
+                >
+                  Import Cards
+                </button>
               </>
             )}
 
+            {/* Settings Modal */}
             {modals.settings && (
               <>
                 <h3 className="text-xl font-bold mb-6">Settings</h3>
                 
+                {/* Sync Key Section */}
                 <div className="mb-6">
-                  <label className="text-xs font-bold text-slate-400 uppercase block mb-2">Sync Key (For multiple devices)</label>
-                  <div className="flex gap-2">
-                    <input id="syncInput" className="w-full bg-slate-100 p-3 rounded-xl text-sm font-mono" placeholder="Paste key here" defaultValue={currentSyncKey} />
-                    <button onClick={() => {
-                        const val = document.getElementById('syncInput').value;
-                        if(val) navigator.clipboard.writeText(val).then(() => notify('Copied!'));
-                    }} className="bg-slate-200 p-3 rounded-xl"><Icon name="copy" size={20}/></button>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">
+                    Sync Key
+                  </label>
+                  <p className="text-xs text-slate-500 mb-2">
+                    Use the same key on multiple devices to sync your data
+                  </p>
+                  <div className="bg-gold/10 border border-gold/30 rounded-lg p-3 mb-3">
+                    <p className="text-xs text-gold flex items-start gap-2">
+                      <Icon name="alert-triangle" size={14} className="mt-0.5 flex-shrink-0" />
+                      <span><strong>Security Note:</strong> Anyone who knows your Sync Key can access your data. Use a unique, hard-to-guess key.</span>
+                    </p>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-2">Copy this key to another device to sync data.</p>
-                  <button onClick={() => updateSyncKey(document.getElementById('syncInput').value)} className="w-full mt-2 bg-blue-50 text-blue-600 py-3 rounded-xl font-bold text-sm">Update Sync Key</button>
+                  <div className="flex gap-2">
+                    <input 
+                      id="syncKeyInput"
+                      className="flex-1 glass-light p-3 rounded-xl font-mono text-sm text-white"
+                      placeholder="Enter sync key"
+                      defaultValue={currentSyncKey}
+                    />
+                    <button 
+                      onClick={() => {
+                        const val = document.getElementById('syncKeyInput').value;
+                        if (val) navigator.clipboard.writeText(val).then(() => notify('Copied!'));
+                      }}
+                      className="p-3 glass-light rounded-xl"
+                    >
+                      <Icon name="copy" size={18} />
+                    </button>
+                  </div>
+                  <button 
+                    onClick={() => updateSyncKey(document.getElementById('syncKeyInput').value)}
+                    className="w-full mt-3 glass-light border border-mint/30 text-mint py-3 rounded-xl font-semibold btn-press"
+                  >
+                    Update Sync Key
+                  </button>
                 </div>
 
-                <div className="mb-4">
-                  <label className="text-xs font-bold text-slate-400 uppercase block mb-2">AI Key</label>
-                  <input value={apiKey} onChange={e=>setApiKey(e.target.value)} className="w-full bg-slate-100 p-3 rounded-xl mb-2" type="password" placeholder="API Key"/>
-                  <button onClick={()=>{DB.setApiKey(apiKey); notify('Saved')}} className="text-primary text-sm font-bold">Save Key</button>
+                {/* API Key Section */}
+                <div className="mb-6">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">
+                    Gemini API Key
+                  </label>
+                  <p className="text-xs text-slate-500 mb-3">
+                    Required for AI explanations. Get it free from Google AI Studio
+                  </p>
+                  <input 
+                    value={apiKey}
+                    onChange={e => setApiKey(e.target.value)}
+                    className="w-full glass-light p-3 rounded-xl mb-3 text-white"
+                    type="password"
+                    placeholder="Enter API key"
+                  />
+                  <button 
+                    onClick={() => { DB.setApiKey(apiKey); notify('API key saved'); }}
+                    className="w-full glass-light border border-lavender/30 text-lavender py-3 rounded-xl font-semibold btn-press"
+                  >
+                    Save API Key
+                  </button>
+                </div>
+
+                {/* Connection Status */}
+                <div className="glass-light rounded-xl p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-400">Connection Status</span>
+                    <span className={`flex items-center gap-2 text-sm ${isOffline ? 'text-coral' : 'text-mint'}`}>
+                      <span className={`w-2 h-2 rounded-full ${isOffline ? 'bg-coral' : 'bg-mint'}`}></span>
+                      {isOffline ? 'Offline' : 'Online'}
+                    </span>
+                  </div>
                 </div>
               </>
             )}
-
           </div>
         </div>
       )}
 
+      {/* Confirm Dialog */}
+      <ConfirmDialog 
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ isOpen: false })}
+      />
+
+      {/* Toast */}
       {toast && (
-        <div className={`fixed top-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-xl z-50 font-bold text-sm flex items-center gap-2 animate-fade-in ${toast.type==='error'?'bg-red-500 text-white':'bg-slate-900 text-white'}`}>
-          <Icon name={toast.type==='error'?'alert-circle':'check'} size={16}/> {toast.msg}
+        <div className={`fixed top-20 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-xl z-[70] font-semibold text-sm flex items-center gap-2 animate-scale-in ${
+          toast.type === 'error' ? 'bg-coral' : 
+          toast.type === 'warning' ? 'bg-gold text-midnight' : 
+          toast.type === 'info' ? 'bg-lavender text-midnight' :
+          'bg-mint text-midnight'
+        }`}>
+          <Icon name={
+            toast.type === 'error' ? 'alert-circle' : 
+            toast.type === 'warning' ? 'alert-triangle' :
+            toast.type === 'info' ? 'info' : 'check'
+          } size={16} />
+          {toast.msg}
         </div>
       )}
-
     </div>
   );
 }
