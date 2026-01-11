@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>VocabLab v8.4 - Soft Delete</title>
+  <title>VocabLab v8.4 - Gemini 2.5 & Soft Delete</title>
   <meta name="description" content="Master TOEIC vocabulary with spaced repetition and AI assistance">
   <meta name="theme-color" content="#FFFFFF">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -51,6 +51,7 @@
             'soft': '0 2px 8px -2px rgba(0, 0, 0, 0.05), 0 4px 16px -4px rgba(0, 0, 0, 0.08)',
             'card': '0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06)',
             'elevated': '0 4px 24px -4px rgba(0, 0, 0, 0.12)',
+            'button': '0 2px 8px -2px rgba(249, 115, 22, 0.4)',
           },
           animation: {
             'fade-in': 'fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
@@ -58,6 +59,7 @@
             'scale-in': 'scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
             'float': 'float 3s ease-in-out infinite',
             'shimmer': 'shimmer 2s linear infinite',
+            'bounce-soft': 'bounceSoft 1s ease-in-out infinite',
           },
           keyframes: {
             fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
@@ -65,6 +67,7 @@
             scaleIn: { '0%': { opacity: '0', transform: 'scale(0.95)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
             float: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-8px)' } },
             shimmer: { '0%': { backgroundPosition: '-200% 0' }, '100%': { backgroundPosition: '200% 0' } },
+            bounceSoft: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-4px)' } },
           }
         }
       }
@@ -137,6 +140,7 @@
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
      
     .btn-primary {
       background: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
@@ -145,7 +149,7 @@
       box-shadow: 0 2px 8px -2px rgba(249, 115, 22, 0.4);
       transition: all 0.2s ease;
     }
-    .btn-primary:hover { transform: translateY(-1px); }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px -2px rgba(249, 115, 22, 0.5); }
     .btn-primary:active { transform: scale(0.98); }
     .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
      
@@ -156,7 +160,7 @@
       font-weight: 500;
       transition: all 0.2s ease;
     }
-    .btn-secondary:hover { background: #F1F5F9; }
+    .btn-secondary:hover { background: #F1F5F9; border-color: #CBD5E1; }
      
     .btn-ai {
       background: linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%);
@@ -164,9 +168,17 @@
       font-weight: 600;
       box-shadow: 0 2px 8px -2px rgba(139, 92, 246, 0.4);
     }
+    .btn-ai:hover { box-shadow: 0 4px 12px -2px rgba(139, 92, 246, 0.5); }
      
     .gradient-text {
       background: linear-gradient(135deg, #F97316, #EAB308);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+     
+    .ai-gradient {
+      background: linear-gradient(135deg, #8B5CF6, #EC4899);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -178,8 +190,8 @@
   <script type="text/babel">
 
 // ============================================
-// VOCABLAB v8.4 - SOFT DELETE EDITION
-// Fixed: Deleted items coming back after sync
+// VOCABLAB v8.4 - SOFT DELETE + GEMINI 2.5
+// Fixed: Deleted items logic + SRS Reset issue
 // ============================================
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
@@ -227,31 +239,31 @@ const SmartMerge = {
     if (!localCards || localCards.length === 0) return cloudCards;
 
     const merged = new Map();
-    
+     
     // 1. เพิ่ม cloud cards ก่อน
     cloudCards.forEach(card => {
       merged.set(card.id, { ...card });
     });
-    
+     
     // 2. เปรียบเทียบกับ local cards
     localCards.forEach(localCard => {
       const cloudCard = merged.get(localCard.id);
-      
+       
       if (!cloudCard) {
         // Card มีแค่ใน local → เพิ่มเข้าไป
         merged.set(localCard.id, localCard);
       } else {
         const localTime = localCard.lastModified || 0;
         const cloudTime = cloudCard.lastModified || 0;
-        
+         
         // ✅ Logic สำหรับ Soft Delete
         if (localCard.deleted && localTime >= cloudTime) {
           // Local ลบแล้วและใหม่กว่า → ใช้ local (ให้มันโดนลบ)
-          console.log(`[Merge] Keep deleted (local): ${localCard.front}`);
+          // console.log(`[Merge] Keep deleted (local): ${localCard.front}`);
           merged.set(localCard.id, localCard);
         } else if (cloudCard.deleted && cloudTime > localTime) {
           // Cloud ลบแล้วและใหม่กว่า → ใช้ cloud
-          console.log(`[Merge] Keep deleted (cloud): ${cloudCard.front}`);
+          // console.log(`[Merge] Keep deleted (cloud): ${cloudCard.front}`);
           merged.set(localCard.id, cloudCard);
         } else if (localTime >= cloudTime) {
           // Local ใหม่กว่า → ใช้ local
@@ -260,11 +272,11 @@ const SmartMerge = {
         // ถ้า cloud ใหม่กว่าจะใช้ cloud ที่ set ไว้แล้ว
       }
     });
-    
+     
     // 3. ✅ Filter out deleted items และ clean up old tombstones
     const now = Date.now();
     const expiryTime = CONFIG.TOMBSTONE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-    
+     
     return Array.from(merged.values()).filter(card => {
       if (!card.deleted) return true;
       // ถ้า tombstone เก่ากว่า 30 วัน → ลบจริง
@@ -283,9 +295,9 @@ const SmartMerge = {
     if (!localDecks || localDecks.length === 0) return cloudDecks;
 
     const merged = new Map();
-    
+     
     cloudDecks.forEach(deck => merged.set(deck.id, { ...deck }));
-    
+     
     localDecks.forEach(localDeck => {
       const cloudDeck = merged.get(localDeck.id);
       if (!cloudDeck) {
@@ -293,7 +305,7 @@ const SmartMerge = {
       } else {
         const localTime = localDeck.lastModified || new Date(localDeck.createdAt || 0).getTime();
         const cloudTime = cloudDeck.lastModified || new Date(cloudDeck.createdAt || 0).getTime();
-        
+         
         // ✅ Soft Delete logic
         if (localDeck.deleted && localTime >= cloudTime) {
           merged.set(localDeck.id, localDeck);
@@ -304,10 +316,10 @@ const SmartMerge = {
         }
       }
     });
-    
+     
     const now = Date.now();
     const expiryTime = CONFIG.TOMBSTONE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-    
+     
     return Array.from(merged.values()).filter(deck => {
       if (!deck.deleted) return true;
       if (deck.deletedAt && (now - deck.deletedAt) > expiryTime) return false;
@@ -363,7 +375,7 @@ const Logo = ({ size = 32, className = '' }) => (
     </defs>
     <path d="M8 12C8 10.3431 9.34315 9 11 9H22C23.1046 9 24 9.89543 24 11V38C24 38 20 36 15 36C10 36 8 38 8 38V12Z" 
       fill="url(#logoGradientLight)" stroke="url(#logoGradient)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M40 12C40 10.3431 38.6569 9 37 9H26C24.8954 9 24 9.89543 24 11V38C24 38 28 36 33 36C38 36 40 38 40 38V12Z" 
+    <path d="M40 12C40 10.3431 38.6569 9 37 9H26C24.8954 9 24 11V38C24 38 28 36 33 36C38 36 40 38 40 38V12Z" 
       fill="url(#logoGradientLight)" stroke="url(#logoGradient)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
     <path d="M24 11V38" stroke="url(#logoGradient)" strokeWidth="2" strokeLinecap="round"/>
     <path d="M12 16H20" stroke="url(#logoGradient)" strokeWidth="2" strokeLinecap="round"/>
@@ -376,7 +388,7 @@ const Logo = ({ size = 32, className = '' }) => (
 );
 
 // ============================================
-// AI SERVICE
+// AI SERVICE - UPDATED TO GEMINI 2.5 FLASH
 // ============================================
 const AIService = {
   async callGemini(prompt, apiKey) {
@@ -385,20 +397,28 @@ const AIService = {
       generationConfig: { temperature: 0.7, maxOutputTokens: 2048, responseMimeType: "application/json" }
     };
     try {
+      // ✅ Changed to gemini-2.5-flash
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
       );
       if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
+        
         if (response.status === 400) throw new Error('API Key invalid');
         if (response.status === 403) throw new Error('Quota exceeded');
         if (response.status === 429) throw new Error('Rate limit - wait and retry');
-        throw new Error(`HTTP ${response.status}`);
+        throw new Error(errorMessage);
       }
       const data = await response.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) throw new Error('Empty response');
-      try { return JSON.parse(text); } catch {
+      try { 
+        // Handle potential markdown code blocks in response
+        const cleanText = text.replace(/```json\n?|\n?```/g, '');
+        return JSON.parse(cleanText); 
+      } catch {
         const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
         if (jsonMatch) return JSON.parse(jsonMatch[0]);
         throw new Error('Invalid JSON');
@@ -534,7 +554,7 @@ const exportToCSV = (cards, deckTitle) => {
 };
 
 // ============================================
-// SRS ALGORITHM
+// SRS ALGORITHM (FIXED)
 // ============================================
 const SRS = {
   init() {
@@ -546,18 +566,30 @@ const SRS = {
   },
   calculate(card, q) {
     let { repetitions = 0, intervalIndex = 0, easeFactor = 2.5 } = card;
-    if (q < 2) { repetitions = 0; intervalIndex = 0; }
-    else {
+    
+    // ✅ Logic ที่แก้แล้ว: Hard ไม่ Reset
+    if (q === 0) { // Again
+      repetitions = 0; 
+      intervalIndex = 0; 
+    } else {
       repetitions++;
-      if (repetitions === 1) intervalIndex = 0;
-      else if (repetitions === 2) intervalIndex = 1;
-      else intervalIndex = Math.min(intervalIndex + 1, 4);
+      if (q === 1) { 
+        // Hard: Keep interval
+      } else if (q === 2) { 
+        // Good: Advance
+        intervalIndex = Math.min(intervalIndex + 1, CONFIG.INTERVALS.length - 1);
+      } else if (q === 3) {
+        // Easy: Jump
+        intervalIndex = Math.min(intervalIndex + 2, CONFIG.INTERVALS.length - 1);
+      }
     }
+    
     const eq = q + 2;
     easeFactor = Math.max(1.3, easeFactor + (0.1 - (5 - eq) * (0.08 + (5 - eq) * 0.02)));
-    if (q === 3) intervalIndex = Math.min(intervalIndex + 1, 4);
+    
     const nextDate = new Date();
     nextDate.setDate(nextDate.getDate() + CONFIG.INTERVALS[intervalIndex]);
+    
     return { repetitions, intervalIndex, easeFactor, nextReviewAt: nextDate.toISOString(), lastModified: Date.now() };
   },
   isDue: (c) => !c.deleted && (!c.nextReviewAt || new Date(c.nextReviewAt) <= new Date())
@@ -1166,7 +1198,7 @@ function App() {
             <button onClick={() => setView('library')} className="flex items-center text-muted gap-1 text-sm hover:text-body">
               <Icon name="arrow-left" size={16} /> Back
             </button>
-             
+              
             <div className="flex justify-between items-start mb-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -1243,7 +1275,7 @@ function App() {
             <div className="flex-1 card-flip">
               <div onClick={() => !flipped && setFlipped(true)}
                 className={`card-flip-inner w-full h-full ${flipped ? 'flipped' : ''}`} style={{ minHeight: '360px' }}>
-                 
+                  
                 <div className="card-front absolute inset-0 card p-8 flex flex-col items-center justify-center cursor-pointer shadow-elevated">
                   <h2 className="text-4xl font-bold mb-4 text-center">{studyQ[currCard].front}</h2>
                   {studyQ[currCard].phonetic && <p className="text-muted mb-6">{studyQ[currCard].phonetic}</p>}
@@ -1257,7 +1289,7 @@ function App() {
                 <div className="card-back absolute inset-0 card p-6 flex flex-col items-center overflow-y-auto shadow-elevated">
                   <p className="text-muted text-sm mb-2">{studyQ[currCard].front}</p>
                   <h2 className="text-3xl font-bold gradient-text mb-4 text-center">{studyQ[currCard].back}</h2>
-                   
+                    
                   {(aiData?.example || studyQ[currCard].example) && (
                     <div className="bg-slate-50 p-4 rounded-xl mb-4 w-full border border-slate-100">
                       <p className="text-sm text-body italic">"{aiData?.example || studyQ[currCard].example}"</p>
@@ -1344,7 +1376,7 @@ function App() {
           onClick={() => setModals({ addDeck: false, addCard: false, import: false, settings: false, editCard: false, generateDeck: false })}>
           <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 modal-content pb-safe animate-slide-up shadow-elevated"
             onClick={e => e.stopPropagation()}>
-             
+              
             {modals.addDeck && (
               <>
                 <h3 className="text-xl font-bold mb-4">Create New Deck</h3>
