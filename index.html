@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>VocabLab v8.3 - Smart Sync</title>
+  <title>VocabLab v8.4 - Soft Delete</title>
   <meta name="description" content="Master TOEIC vocabulary with spaced repetition and AI assistance">
   <meta name="theme-color" content="#FFFFFF">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -178,8 +178,8 @@
   <script type="text/babel">
 
 // ============================================
-// VOCABLAB v8.3 - SMART SYNC EDITION
-// Fixed: Card reset issue with Smart Merge
+// VOCABLAB v8.4 - SOFT DELETE EDITION
+// Fixed: Deleted items coming back after sync
 // ============================================
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
@@ -198,9 +198,9 @@ const FIREBASE_CONFIG = {
 
 const CONFIG = {
   INTERVALS: [1, 3, 7, 14, 30],
-  MIN_EASE: 1.3,
   DEFAULT_EASE: 2.5,
   DAILY_GOAL: 20,
+  TOMBSTONE_EXPIRY_DAYS: 30, // ลบ tombstone หลัง 30 วัน
 };
 
 const STARTER_DECK = { id: 'starter_deck_001', title: 'TOEIC Essential', createdAt: new Date().toISOString(), color: 'primary', lastModified: Date.now() };
@@ -213,14 +213,14 @@ const STARTER_CARDS = [
 ];
 
 // ============================================
-// 🔥 SMART MERGE UTILITY - แก้ปัญหาข้อมูลถูกรีเซ็ต
+// 🔥 SMART MERGE v2 - with Soft Delete Support
 // ============================================
 const SmartMerge = {
   /**
-   * Merge cards โดยเลือกข้อมูลที่ lastModified ใหม่กว่า
-   * - ถ้า local ใหม่กว่า → ใช้ local (ป้องกันการถูก overwrite)
-   * - ถ้า cloud ใหม่กว่า → ใช้ cloud (sync จากอุปกรณ์อื่น)
-   * - ถ้ามีแค่ฝั่งเดียว → เพิ่มเข้าไป
+   * Merge cards with Soft Delete support
+   * - deleted: true = tombstone (ทำเครื่องหมายว่าลบแล้ว)
+   * - ถ้า local deleted และใหม่กว่า → ใช้ local
+   * - Filter out deleted items ก่อน return
    */
   mergeCards(localCards, cloudCards) {
     if (!cloudCards || cloudCards.length === 0) return localCards || [];
@@ -241,25 +241,43 @@ const SmartMerge = {
         // Card มีแค่ใน local → เพิ่มเข้าไป
         merged.set(localCard.id, localCard);
       } else {
-        // มีทั้งสองที่ → เลือกอันที่ใหม่กว่า
         const localTime = localCard.lastModified || 0;
         const cloudTime = cloudCard.lastModified || 0;
         
-        if (localTime >= cloudTime) {
-          // ✅ Local ใหม่กว่า → ใช้ local (ป้องกัน progress หาย)
+        // ✅ Logic สำหรับ Soft Delete
+        if (localCard.deleted && localTime >= cloudTime) {
+          // Local ลบแล้วและใหม่กว่า → ใช้ local (ให้มันโดนลบ)
+          console.log(`[Merge] Keep deleted (local): ${localCard.front}`);
           merged.set(localCard.id, localCard);
-          console.log(`[Merge] Keep local: ${localCard.front} (local: ${localTime}, cloud: ${cloudTime})`);
-        } else {
-          // Cloud ใหม่กว่า → ใช้ cloud
-          console.log(`[Merge] Use cloud: ${cloudCard.front} (local: ${localTime}, cloud: ${cloudTime})`);
+        } else if (cloudCard.deleted && cloudTime > localTime) {
+          // Cloud ลบแล้วและใหม่กว่า → ใช้ cloud
+          console.log(`[Merge] Keep deleted (cloud): ${cloudCard.front}`);
+          merged.set(localCard.id, cloudCard);
+        } else if (localTime >= cloudTime) {
+          // Local ใหม่กว่า → ใช้ local
+          merged.set(localCard.id, localCard);
         }
+        // ถ้า cloud ใหม่กว่าจะใช้ cloud ที่ set ไว้แล้ว
       }
     });
     
-    return Array.from(merged.values());
+    // 3. ✅ Filter out deleted items และ clean up old tombstones
+    const now = Date.now();
+    const expiryTime = CONFIG.TOMBSTONE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+    
+    return Array.from(merged.values()).filter(card => {
+      if (!card.deleted) return true;
+      // ถ้า tombstone เก่ากว่า 30 วัน → ลบจริง
+      if (card.deletedAt && (now - card.deletedAt) > expiryTime) {
+        console.log(`[Cleanup] Removing old tombstone: ${card.front}`);
+        return false;
+      }
+      // เก็บ tombstone ไว้สำหรับ sync (แต่จะไม่แสดงใน UI)
+      return true;
+    });
   },
 
-  // Merge decks
+  // Merge decks with Soft Delete support
   mergeDecks(localDecks, cloudDecks) {
     if (!cloudDecks || cloudDecks.length === 0) return localDecks || [];
     if (!localDecks || localDecks.length === 0) return cloudDecks;
@@ -275,44 +293,58 @@ const SmartMerge = {
       } else {
         const localTime = localDeck.lastModified || new Date(localDeck.createdAt || 0).getTime();
         const cloudTime = cloudDeck.lastModified || new Date(cloudDeck.createdAt || 0).getTime();
-        if (localTime >= cloudTime) {
+        
+        // ✅ Soft Delete logic
+        if (localDeck.deleted && localTime >= cloudTime) {
+          merged.set(localDeck.id, localDeck);
+        } else if (cloudDeck.deleted && cloudTime > localTime) {
+          merged.set(localDeck.id, cloudDeck);
+        } else if (localTime >= cloudTime) {
           merged.set(localDeck.id, localDeck);
         }
       }
     });
     
-    return Array.from(merged.values());
+    const now = Date.now();
+    const expiryTime = CONFIG.TOMBSTONE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+    
+    return Array.from(merged.values()).filter(deck => {
+      if (!deck.deleted) return true;
+      if (deck.deletedAt && (now - deck.deletedAt) > expiryTime) return false;
+      return true;
+    });
   },
 
-  // Merge reviews - รวมทั้งหมดไม่ซ้ำ
+  // Merge reviews
   mergeReviews(localReviews, cloudReviews) {
     if (!cloudReviews || cloudReviews.length === 0) return localReviews || [];
     if (!localReviews || localReviews.length === 0) return cloudReviews;
 
     const merged = new Map();
-    
     [...cloudReviews, ...localReviews].forEach(review => {
       const key = `${review.cardId}_${review.date}`;
       merged.set(key, review);
     });
-    
     return Array.from(merged.values());
   },
 
-  // Merge stats - เลือกค่าที่สูงกว่า
+  // Merge stats
   mergeStats(localStats, cloudStats) {
     if (!cloudStats) return localStats || { streak: 0, totalReviews: 0 };
     if (!localStats) return cloudStats;
-
     return {
       streak: Math.max(localStats.streak || 0, cloudStats.streak || 0),
       totalReviews: Math.max(localStats.totalReviews || 0, cloudStats.totalReviews || 0),
       lastGoalDate: (localStats.lastGoalDate || '') > (cloudStats.lastGoalDate || '')
-        ? localStats.lastGoalDate 
-        : cloudStats.lastGoalDate,
+        ? localStats.lastGoalDate : cloudStats.lastGoalDate,
     };
   }
 };
+
+// ============================================
+// Helper: Filter active items (not deleted)
+// ============================================
+const filterActive = (items) => items.filter(item => !item.deleted);
 
 // ============================================
 // CUSTOM LOGO COMPONENT
@@ -344,66 +376,43 @@ const Logo = ({ size = 32, className = '' }) => (
 );
 
 // ============================================
-// AI SERVICE - Gemini 2.5 with JSON Mode
+// AI SERVICE
 // ============================================
 const AIService = {
   async callGemini(prompt, apiKey) {
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2048,
-        responseMimeType: "application/json",
-      }
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2048, responseMimeType: "application/json" }
     };
-
     try {
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        }
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
       );
-
       if (!response.ok) {
         if (response.status === 400) throw new Error('API Key invalid');
         if (response.status === 403) throw new Error('Quota exceeded');
         if (response.status === 429) throw new Error('Rate limit - wait and retry');
         throw new Error(`HTTP ${response.status}`);
       }
-
       const data = await response.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) throw new Error('Empty response');
-      
-      try {
-        return JSON.parse(text);
-      } catch {
+      try { return JSON.parse(text); } catch {
         const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
         if (jsonMatch) return JSON.parse(jsonMatch[0]);
         throw new Error('Invalid JSON');
       }
-    } catch (error) {
-      console.error('AI Error:', error);
-      throw error;
-    }
+    } catch (error) { console.error('AI Error:', error); throw error; }
   },
-
   async getAIHelp(word, meaning, apiKey) {
-    const prompt = `For "${word}" (${meaning}), return JSON: {"example":"sentence","partOfSpeech":"type","memoryTip":"tip","collocations":["phrase1","phrase2"]}`;
-    return await this.callGemini(prompt, apiKey);
+    return await this.callGemini(`For "${word}" (${meaning}), return JSON: {"example":"sentence","partOfSpeech":"type","memoryTip":"tip","collocations":["phrase1","phrase2"]}`, apiKey);
   },
-
   async generateDeck(topic, count, level, apiKey) {
-    const prompt = `Generate ${count} TOEIC words about "${topic}" at ${level} level. Return JSON: {"words":[{"front":"word","back":"คำแปลไทย","phonetic":"/phonetic/","example":"sentence"}]}`;
-    return await this.callGemini(prompt, apiKey);
+    return await this.callGemini(`Generate ${count} TOEIC words about "${topic}" at ${level} level. Return JSON: {"words":[{"front":"word","back":"คำแปลไทย","phonetic":"/phonetic/","example":"sentence"}]}`, apiKey);
   },
-
   async checkSentence(word, sentence, apiKey) {
-    const prompt = `Check sentence using "${word}": "${sentence}". Return JSON: {"grammarCorrect":true/false,"grammarNote":"Thai explanation","contextCorrect":true/false,"contextNote":"Thai","correctedSentence":"corrected","suggestion":"Thai tips","score":1-5}`;
-    return await this.callGemini(prompt, apiKey);
+    return await this.callGemini(`Check sentence using "${word}": "${sentence}". Return JSON: {"grammarCorrect":true,"grammarNote":"Thai","contextCorrect":true,"contextNote":"Thai","correctedSentence":"corrected","suggestion":"Thai tips","score":1}`, apiKey);
   }
 };
 
@@ -419,14 +428,10 @@ const Icon = ({ name, size = 24, className = '', fill = 'none' }) => {
     if (iconData) {
       ref.current.innerHTML = '';
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('width', size);
-      svg.setAttribute('height', size);
-      svg.setAttribute('viewBox', '0 0 24 24');
-      svg.setAttribute('fill', fill);
-      svg.setAttribute('stroke', 'currentColor');
-      svg.setAttribute('stroke-width', '2');
-      svg.setAttribute('stroke-linecap', 'round');
-      svg.setAttribute('stroke-linejoin', 'round');
+      svg.setAttribute('width', size); svg.setAttribute('height', size);
+      svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', fill);
+      svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
+      svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
       if (Array.isArray(iconData)) {
         const children = Array.isArray(iconData[2]) ? iconData[2] : [];
         children.forEach(([tag, attrs]) => {
@@ -446,27 +451,20 @@ const Icon = ({ name, size = 24, className = '', fill = 'none' }) => {
 // ============================================
 const CloudSync = {
   db: null, auth: null, userId: null, customKey: null, initialized: false, activeListener: null,
-   
   init(config) {
     if (this.initialized) return Promise.resolve(true);
     try {
       if (!firebase.apps.length) firebase.initializeApp(config);
-      this.db = firebase.database();
-      this.auth = firebase.auth();
+      this.db = firebase.database(); this.auth = firebase.auth();
       this.initialized = true;
       this.customKey = localStorage.getItem('vocab_sync_key');
       return this.signIn();
     } catch (e) { console.error('Firebase init error:', e); return Promise.resolve(false); }
   },
-   
   async signIn() {
-    try {
-      const res = await this.auth.signInAnonymously();
-      this.userId = res.user.uid;
-      return true;
-    } catch (e) { console.error('Auth error:', e); return false; }
+    try { const res = await this.auth.signInAnonymously(); this.userId = res.user.uid; return true; }
+    catch (e) { console.error('Auth error:', e); return false; }
   },
-   
   setSyncKey(key) {
     this.cleanupListener();
     const cleanKey = key ? key.trim().replace(/[.#$\/\[\]]/g, '_') : null;
@@ -474,45 +472,23 @@ const CloudSync = {
     if (cleanKey) localStorage.setItem('vocab_sync_key', cleanKey);
     else localStorage.removeItem('vocab_sync_key');
   },
-
-  getUserPath() {
-    const pathId = this.customKey || this.userId;
-    return pathId ? `users/${pathId}` : null;
-  },
-   
+  getUserPath() { const pathId = this.customKey || this.userId; return pathId ? `users/${pathId}` : null; },
   getCurrentId() { return this.customKey || this.userId; },
-
   async saveToCloud(data, onError) {
     const path = this.getUserPath();
     if (!this.initialized || !path) return;
-    try { 
-      await this.db.ref(path).set({ ...data, lastSync: Date.now() }); 
-      console.log('[Cloud] Saved successfully');
-    } catch(e) { 
-      console.error("Save failed:", e); 
-      if(e.code === 'PERMISSION_DENIED' && onError) onError('Permission Denied');
-    }
+    try { await this.db.ref(path).set({ ...data, lastSync: Date.now() }); console.log('[Cloud] ✅ Saved'); }
+    catch(e) { console.error("Save failed:", e); if(e.code === 'PERMISSION_DENIED' && onError) onError('Permission Denied'); }
   },
-   
-  cleanupListener() {
-    if (this.activeListener) { this.activeListener.off(); this.activeListener = null; }
-  },
-   
+  cleanupListener() { if (this.activeListener) { this.activeListener.off(); this.activeListener = null; } },
   onDataChange(cb, onError) {
     const path = this.getUserPath();
     if (!this.initialized || !path) return () => {};
     this.cleanupListener();
     const ref = this.db.ref(path);
     this.activeListener = ref;
-     
-    const handler = (snapshot) => {
-      if (snapshot.exists()) cb(snapshot.val());
-      else cb(null);
-    };
-    const errorHandler = (err) => {
-      if(err.code === 'PERMISSION_DENIED' && onError) onError('Permission Denied');
-    };
-     
+    const handler = (snapshot) => { if (snapshot.exists()) cb(snapshot.val()); else cb(null); };
+    const errorHandler = (err) => { if(err.code === 'PERMISSION_DENIED' && onError) onError('Permission Denied'); };
     ref.on('value', handler, errorHandler);
     return () => { ref.off('value', handler); this.activeListener = null; };
   },
@@ -535,8 +511,7 @@ const speak = (text) => {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'en-US';
-  u.rate = 0.9;
+  u.lang = 'en-US'; u.rate = 0.9;
   window.speechSynthesis.speak(u);
 };
 
@@ -553,70 +528,49 @@ const exportToCSV = (cards, deckTitle) => {
   const rows = cards.map(c => `"${c.front}","${c.back}","${c.phonetic || ''}","${c.example || ''}"`).join('\n');
   const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
+  const link = document.createElement('a'); link.href = url;
   link.download = `${deckTitle.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
+  link.click(); URL.revokeObjectURL(url);
 };
 
 // ============================================
-// SRS ALGORITHM - with lastModified
+// SRS ALGORITHM
 // ============================================
 const SRS = {
-  // Initialize new card - due NOW + timestamp
   init() {
     return {
-      repetitions: 0,
-      intervalIndex: 0,
-      easeFactor: CONFIG.DEFAULT_EASE,
+      repetitions: 0, intervalIndex: 0, easeFactor: CONFIG.DEFAULT_EASE,
       nextReviewAt: new Date().toISOString(),
-      lastModified: Date.now()  // ✅ เพิ่ม timestamp
+      lastModified: Date.now()
     };
   },
-   
-  // Calculate next review + update timestamp
   calculate(card, q) {
     let { repetitions = 0, intervalIndex = 0, easeFactor = 2.5 } = card;
-     
-    if (q < 2) { 
-      repetitions = 0; 
-      intervalIndex = 0; 
-    } else {
+    if (q < 2) { repetitions = 0; intervalIndex = 0; }
+    else {
       repetitions++;
       if (repetitions === 1) intervalIndex = 0;
       else if (repetitions === 2) intervalIndex = 1;
       else intervalIndex = Math.min(intervalIndex + 1, 4);
     }
-     
     const eq = q + 2;
     easeFactor = Math.max(1.3, easeFactor + (0.1 - (5 - eq) * (0.08 + (5 - eq) * 0.02)));
     if (q === 3) intervalIndex = Math.min(intervalIndex + 1, 4);
-     
     const nextDate = new Date();
     nextDate.setDate(nextDate.getDate() + CONFIG.INTERVALS[intervalIndex]);
-     
-    return { 
-      repetitions, 
-      intervalIndex, 
-      easeFactor, 
-      nextReviewAt: nextDate.toISOString(),
-      lastModified: Date.now()  // ✅ อัพเดท timestamp ทุกครั้งที่ตอบ
-    };
+    return { repetitions, intervalIndex, easeFactor, nextReviewAt: nextDate.toISOString(), lastModified: Date.now() };
   },
-   
-  isDue: (c) => !c.nextReviewAt || new Date(c.nextReviewAt) <= new Date()
+  isDue: (c) => !c.deleted && (!c.nextReviewAt || new Date(c.nextReviewAt) <= new Date())
 };
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
-
 const DECK_COLORS = ['primary', 'mint', 'lavender', 'sky'];
 const getColorClasses = (color) => {
   const colors = {
-    primary: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-primary', dot: 'bg-primary' },
-    mint: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-mint', dot: 'bg-mint' },
-    lavender: { bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-lavender', dot: 'bg-lavender' },
-    sky: { bg: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky', dot: 'bg-sky' },
+    primary: { bg: 'bg-orange-50', text: 'text-primary', dot: 'bg-primary' },
+    mint: { bg: 'bg-emerald-50', text: 'text-mint', dot: 'bg-mint' },
+    lavender: { bg: 'bg-violet-50', text: 'text-lavender', dot: 'bg-lavender' },
+    sky: { bg: 'bg-sky-50', text: 'text-sky', dot: 'bg-sky' },
   };
   return colors[color] || colors.primary;
 };
@@ -663,11 +617,7 @@ const SearchBar = ({ value, onChange, placeholder }) => (
     <Icon name="search" size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
     <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
       className="w-full input-clean pl-12 pr-10 py-3 rounded-xl text-heading placeholder-muted" />
-    {value && (
-      <button onClick={() => onChange('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-body">
-        <Icon name="x" size={18} />
-      </button>
-    )}
+    {value && <button onClick={() => onChange('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-body"><Icon name="x" size={18} /></button>}
   </div>
 );
 
@@ -676,18 +626,15 @@ const CircularProgress = ({ value, max, size = 80 }) => {
   const circumference = 2 * Math.PI * radius;
   const progress = Math.min(value / max, 1);
   const offset = circumference - (progress * circumference);
-   
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg className="w-full h-full transform -rotate-90">
         <circle cx={size/2} cy={size/2} r={radius} stroke="#F1F5F9" strokeWidth="8" fill="none"/>
         <circle cx={size/2} cy={size/2} r={radius} stroke="url(#progressGradient)" strokeWidth="8" fill="none"
           strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="transition-all duration-1000 ease-out"/>
-        <defs>
-          <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#F97316" /><stop offset="100%" stopColor="#EAB308" />
-          </linearGradient>
-        </defs>
+        <defs><linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#F97316" /><stop offset="100%" stopColor="#EAB308" />
+        </linearGradient></defs>
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
         <span className="text-xl font-bold text-heading">{value}<span className="text-sm text-muted">/{max}</span></span>
@@ -701,73 +648,47 @@ const SentenceCheckPanel = ({ word, apiKey, onClose }) => {
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-
   const handleCheck = async () => {
     if (!sentence.trim() || !apiKey) return;
     setChecking(true); setError(''); setResult(null);
-    try {
-      setResult(await AIService.checkSentence(word, sentence, apiKey));
-    } catch (err) { setError(err.message); }
+    try { setResult(await AIService.checkSentence(word, sentence, apiKey)); }
+    catch (err) { setError(err.message); }
     setChecking(false);
   };
-
   return (
     <div className="bg-violet-50 rounded-2xl p-4 border border-violet-100 mt-4 animate-fade-in">
       <div className="flex items-center justify-between mb-3">
-        <h4 className="font-semibold text-lavender flex items-center gap-2">
-          <Icon name="pen-tool" size={18} /> Practice Writing
-        </h4>
+        <h4 className="font-semibold text-lavender flex items-center gap-2"><Icon name="pen-tool" size={18} /> Practice Writing</h4>
         <button onClick={onClose} className="text-muted hover:text-body"><Icon name="x" size={18} /></button>
       </div>
-       
       <p className="text-sm text-body mb-3">ลองแต่งประโยคโดยใช้คำว่า "<span className="font-semibold text-lavender">{word}</span>"</p>
-       
-      <textarea value={sentence} onChange={e => setSentence(e.target.value)}
-        placeholder={`Type a sentence using "${word}"...`}
+      <textarea value={sentence} onChange={e => setSentence(e.target.value)} placeholder={`Type a sentence using "${word}"...`}
         className="w-full input-clean p-3 rounded-xl text-heading text-sm resize-none h-20 mb-3" />
-       
       <button onClick={handleCheck} disabled={checking || !sentence.trim()}
         className="w-full btn-ai py-2.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
         {checking ? <><Icon name="loader-2" size={18} className="animate-spin" /> Checking...</> : <><Icon name="sparkles" size={18} /> Check with AI</>}
       </button>
-
       {error && <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl"><p className="text-sm text-coral">{error}</p></div>}
-
       {result && (
         <div className="mt-4 space-y-3 animate-fade-in">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-body">Score</span>
-            <div className="flex gap-1">
-              {[1,2,3,4,5].map(i => (
-                <Icon key={i} name="star" size={18} fill={i <= result.score ? '#F59E0B' : 'none'} 
-                  className={i <= result.score ? 'text-gold' : 'text-slate-300'} />
-              ))}
-            </div>
+            <div className="flex gap-1">{[1,2,3,4,5].map(i => <Icon key={i} name="star" size={18} fill={i <= result.score ? '#F59E0B' : 'none'} className={i <= result.score ? 'text-gold' : 'text-slate-300'} />)}</div>
           </div>
-           
           <div className={`p-3 rounded-xl ${result.grammarCorrect ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <Icon name={result.grammarCorrect ? 'check-circle' : 'x-circle'} size={16} className={result.grammarCorrect ? 'text-mint' : 'text-coral'} />
-              <span className="text-sm font-medium">Grammar</span>
-            </div>
+            <div className="flex items-center gap-2 mb-1"><Icon name={result.grammarCorrect ? 'check-circle' : 'x-circle'} size={16} className={result.grammarCorrect ? 'text-mint' : 'text-coral'} /><span className="text-sm font-medium">Grammar</span></div>
             <p className="text-sm text-body">{result.grammarNote}</p>
           </div>
-           
           <div className={`p-3 rounded-xl ${result.contextCorrect ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <Icon name={result.contextCorrect ? 'check-circle' : 'alert-circle'} size={16} className={result.contextCorrect ? 'text-mint' : 'text-gold'} />
-              <span className="text-sm font-medium">Context</span>
-            </div>
+            <div className="flex items-center gap-2 mb-1"><Icon name={result.contextCorrect ? 'check-circle' : 'alert-circle'} size={16} className={result.contextCorrect ? 'text-mint' : 'text-gold'} /><span className="text-sm font-medium">Context</span></div>
             <p className="text-sm text-body">{result.contextNote}</p>
           </div>
-           
           {result.correctedSentence && result.correctedSentence !== sentence && (
             <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl">
               <p className="text-xs text-sky font-medium mb-1">✨ Suggested</p>
               <p className="text-sm text-heading italic">"{result.correctedSentence}"</p>
             </div>
           )}
-           
           {result.suggestion && (
             <div className="p-3 bg-violet-50 border border-violet-200 rounded-xl">
               <p className="text-xs text-lavender font-medium mb-1">💡 Tips</p>
@@ -799,15 +720,13 @@ function App() {
    
   const syncTimer = useRef(null);
   const lastSaveTime = useRef(0);
-  const SYNC_LOCK_DURATION = 5000;  // ✅ เพิ่มเป็น 5 วินาที
+  const SYNC_LOCK_DURATION = 5000;
 
-  // ✅ Refs เก็บ current state สำหรับใช้ใน merge
   const cardsRef = useRef(cards);
   const decksRef = useRef(decks);
   const reviewsRef = useRef(reviews);
   const statsRef = useRef(stats);
 
-  // อัพเดท refs เมื่อ state เปลี่ยน
   useEffect(() => { cardsRef.current = cards; }, [cards]);
   useEffect(() => { decksRef.current = decks; }, [decks]);
   useEffect(() => { reviewsRef.current = reviews; }, [reviews]);
@@ -822,9 +741,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showPractice, setShowPractice] = useState(false);
 
-  const [modals, setModals] = useState({ 
-    addDeck: false, addCard: false, import: false, settings: false, editCard: false, generateDeck: false 
-  });
+  const [modals, setModals] = useState({ addDeck: false, addCard: false, import: false, settings: false, editCard: false, generateDeck: false });
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false });
   const [editingCard, setEditingCard] = useState(null);
   const [toast, setToast] = useState(null);
@@ -834,12 +751,8 @@ function App() {
   const [genLevel, setGenLevel] = useState('Intermediate');
   const [generating, setGenerating] = useState(false);
 
-  const notify = (msg, type = 'success') => { 
-    setToast({ msg, type }); 
-    setTimeout(() => setToast(null), 4000); 
-  };
+  const notify = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 4000); };
 
-  // Online/Offline
   useEffect(() => {
     const handleOnline = () => { setIsOffline(false); notify('Back online!'); };
     const handleOffline = () => { setIsOffline(true); notify('You are offline', 'warning'); };
@@ -848,35 +761,22 @@ function App() {
     return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); };
   }, []);
 
-  // Initial Load - เพิ่ม lastModified ให้ cards เก่า
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
       const localDecks = DB.get('decks', []);
       const localCards = DB.get('cards', []);
-       
       if (localDecks.length === 0) {
         const starterCards = STARTER_CARDS.map(c => ({ ...c, id: generateId(), deckId: STARTER_DECK.id, ...SRS.init() }));
         setDecks([STARTER_DECK]);
         setCards(starterCards);
       } else {
-        // ✅ เพิ่ม lastModified ให้ cards เก่าที่ยังไม่มี
-        const updatedDecks = localDecks.map(d => ({
-          ...d,
-          lastModified: d.lastModified || Date.now()
-        }));
-        const updatedCards = localCards.map(c => ({
-          ...c,
-          lastModified: c.lastModified || Date.now()
-        }));
-        setDecks(updatedDecks);
-        setCards(updatedCards);
+        setDecks(localDecks.map(d => ({ ...d, lastModified: d.lastModified || Date.now() })));
+        setCards(localCards.map(c => ({ ...c, lastModified: c.lastModified || Date.now() })));
       }
-       
       setReviews(DB.get('reviews', []));
       setStats(DB.get('stats', { streak: 0, totalReviews: 0 }));
       setApiKey(DB.getApiKey());
-       
       if (navigator.onLine) await initCloud(FIREBASE_CONFIG);
       setTimeout(() => setIsLoading(false), 600);
     };
@@ -890,54 +790,25 @@ function App() {
     }
   };
 
-  // ============================================
-  // 🔥 SMART SYNC - Realtime Subscription with Merge
-  // ============================================
   const unsubscribeRef = useRef(null);
   useEffect(() => {
     if (unsubscribeRef.current) { unsubscribeRef.current(); unsubscribeRef.current = null; }
     if (!cloudEnabled || isOffline) return;
-
     const timeoutId = setTimeout(() => {
       setSyncing(true);
       unsubscribeRef.current = CloudSync.onDataChange(
         (cloudData) => {
           const timeSinceLastSave = Date.now() - lastSaveTime.current;
-          
-          // ถ้าเพิ่ง save ไป → ignore (ป้องกัน loop)
-          if (timeSinceLastSave < SYNC_LOCK_DURATION) { 
-            console.log(`[Sync] Ignoring cloud update (lock: ${timeSinceLastSave}ms)`);
-            setSyncing(false); 
-            return; 
-          }
-          
-          if (!cloudData) {
-            console.log('[Sync] No cloud data');
-            setSyncing(false);
-            return;
-          }
-
-          console.log('[Sync] 🔄 Merging cloud data with local...');
-          
-          // ✅ ใช้ Smart Merge แทนการเขียนทับ
+          if (timeSinceLastSave < SYNC_LOCK_DURATION) { console.log(`[Sync] Ignoring (lock: ${timeSinceLastSave}ms)`); setSyncing(false); return; }
+          if (!cloudData) { console.log('[Sync] No cloud data'); setSyncing(false); return; }
+          console.log('[Sync] 🔄 Merging...');
           const mergedCards = SmartMerge.mergeCards(cardsRef.current, cloudData.cards);
           const mergedDecks = SmartMerge.mergeDecks(decksRef.current, cloudData.decks);
           const mergedReviews = SmartMerge.mergeReviews(reviewsRef.current, cloudData.reviews);
           const mergedStats = SmartMerge.mergeStats(statsRef.current, cloudData.stats);
-
-          // อัพเดท state
-          setCards(mergedCards);
-          setDecks(mergedDecks);
-          setReviews(mergedReviews);
-          setStats(mergedStats);
-
-          // บันทึก local
-          DB.set('cards', mergedCards);
-          DB.set('decks', mergedDecks);
-          DB.set('reviews', mergedReviews);
-          DB.set('stats', mergedStats);
-
-          console.log('[Sync] ✅ Merge complete');
+          setCards(mergedCards); setDecks(mergedDecks); setReviews(mergedReviews); setStats(mergedStats);
+          DB.set('cards', mergedCards); DB.set('decks', mergedDecks); DB.set('reviews', mergedReviews); DB.set('stats', mergedStats);
+          console.log('[Sync] ✅ Done');
           setSyncing(false);
         },
         (err) => { setSyncing(false); notify(err, 'error'); }
@@ -946,20 +817,15 @@ function App() {
     return () => { clearTimeout(timeoutId); if (unsubscribeRef.current) unsubscribeRef.current(); };
   }, [cloudEnabled, currentSyncKey, isOffline]);
 
-  // Auto Save with debounce
   const saveData = useCallback(() => {
-    DB.set('decks', decks); 
-    DB.set('cards', cards); 
-    DB.set('reviews', reviews); 
-    DB.set('stats', stats);
-    
+    DB.set('decks', decks); DB.set('cards', cards); DB.set('reviews', reviews); DB.set('stats', stats);
     if (cloudEnabled && !isOffline) {
       clearTimeout(syncTimer.current);
       syncTimer.current = setTimeout(() => {
         lastSaveTime.current = Date.now();
-        console.log('[Save] 💾 Saving to cloud...');
+        console.log('[Save] 💾 Saving...');
         CloudSync.saveToCloud({ decks, cards, reviews, stats }, (err) => notify(err, 'error'));
-      }, 1500);  // ✅ เพิ่ม debounce เป็น 1.5 วินาที
+      }, 1500);
     }
   }, [decks, cards, reviews, stats, cloudEnabled, isOffline]);
 
@@ -972,77 +838,78 @@ function App() {
   const toggleModal = (n, v) => setModals(prev => ({ ...prev, [n]: v }));
 
   // ============================================
-  // ACTIONS - เพิ่ม lastModified ทุกครั้ง
+  // ACTIONS - with Soft Delete
   // ============================================
    
   const createDeck = (title) => {
     const color = DECK_COLORS[decks.length % DECK_COLORS.length];
-    setDecks([...decks, { 
-      id: generateId(), 
-      title, 
-      createdAt: new Date().toISOString(), 
-      color,
-      lastModified: Date.now()  // ✅
-    }]);
+    setDecks([...decks, { id: generateId(), title, createdAt: new Date().toISOString(), color, lastModified: Date.now() }]);
     toggleModal('addDeck', false);
     notify('Deck created! 🎉');
   };
 
+  // ✅ SOFT DELETE - Deck
   const deleteDeck = (deckId) => {
     setConfirmDialog({
       isOpen: true, type: 'danger', title: 'Delete Deck?',
       message: 'This will permanently delete the deck and all its cards.',
       onConfirm: () => {
-        setDecks(decks.filter(d => d.id !== deckId));
-        setCards(cards.filter(c => c.deckId !== deckId));
+        const now = Date.now();
+        // ✅ Soft delete deck - mark as deleted instead of filtering out
+        setDecks(decks.map(d => 
+          d.id === deckId 
+            ? { ...d, deleted: true, deletedAt: now, lastModified: now }
+            : d
+        ));
+        // ✅ Soft delete all cards in this deck
+        setCards(cards.map(c => 
+          c.deckId === deckId 
+            ? { ...c, deleted: true, deletedAt: now, lastModified: now }
+            : c
+        ));
         setConfirmDialog({ isOpen: false });
         setView('library');
         notify('Deck deleted');
+        console.log(`[Delete] Soft deleted deck: ${deckId}`);
       }
     });
   };
 
   const addCard = (data) => {
-    setCards([...cards, { 
-      id: generateId(), 
-      deckId: selDeck.id, 
-      ...data, 
-      ...SRS.init()  // ✅ มี lastModified แล้ว
-    }]);
+    setCards([...cards, { id: generateId(), deckId: selDeck.id, ...data, ...SRS.init() }]);
     toggleModal('addCard', false);
     notify('Card added! ✨');
   };
 
   const updateCard = (id, data) => {
-    setCards(cards.map(c => c.id === id ? { 
-      ...c, 
-      ...data, 
-      lastModified: Date.now()  // ✅
-    } : c));
+    setCards(cards.map(c => c.id === id ? { ...c, ...data, lastModified: Date.now() } : c));
     toggleModal('editCard', false);
     setEditingCard(null);
     notify('Card updated');
   };
 
+  // ✅ SOFT DELETE - Card
   const deleteCard = (id) => {
     setConfirmDialog({
       isOpen: true, type: 'danger', title: 'Delete Card?',
       message: 'This card will be permanently removed.',
       onConfirm: () => {
-        setCards(cards.filter(c => c.id !== id));
+        const now = Date.now();
+        // ✅ Soft delete - mark as deleted instead of filtering out
+        setCards(cards.map(c => 
+          c.id === id 
+            ? { ...c, deleted: true, deletedAt: now, lastModified: now }
+            : c
+        ));
         setConfirmDialog({ isOpen: false });
         notify('Card deleted');
+        console.log(`[Delete] Soft deleted card: ${id}`);
       }
     });
   };
 
   const importCSV = (txt) => {
-    const newCards = parseCSV(txt).map(c => ({ 
-      id: generateId(), 
-      deckId: selDeck.id, 
-      ...c, 
-      ...SRS.init()  // ✅ มี lastModified
-    }));
+    const newCards = parseCSV(txt).map(c => ({ id: generateId(), deckId: selDeck.id, ...c, ...SRS.init() }));
     if (newCards.length) {
       setCards([...cards, ...newCards]);
       toggleModal('import', false);
@@ -1051,7 +918,7 @@ function App() {
   };
 
   const handleExport = () => {
-    const deckCards = cards.filter(c => c.deckId === selDeck.id);
+    const deckCards = filterActive(cards.filter(c => c.deckId === selDeck.id));
     if (deckCards.length === 0) { notify('No cards to export', 'warning'); return; }
     exportToCSV(deckCards, selDeck.title);
     notify('Exported! 📤');
@@ -1060,45 +927,24 @@ function App() {
   const handleGenerateDeck = async () => {
     if (!genTopic.trim()) { notify('Please enter a topic', 'warning'); return; }
     if (!apiKey) { notify('Add API Key first', 'warning'); toggleModal('generateDeck', false); toggleModal('settings', true); return; }
-     
     setGenerating(true);
     try {
       const result = await AIService.generateDeck(genTopic, genCount, genLevel, apiKey);
-       
       let wordsArray = null;
       if (Array.isArray(result)) wordsArray = result;
       else if (result.words) wordsArray = result.words;
       else if (result.vocabulary) wordsArray = result.vocabulary;
-      else {
-        for (const key of Object.keys(result)) {
-          if (Array.isArray(result[key])) { wordsArray = result[key]; break; }
-        }
-      }
-
+      else { for (const key of Object.keys(result)) { if (Array.isArray(result[key])) { wordsArray = result[key]; break; } } }
       if (!wordsArray?.length) throw new Error('Invalid AI response');
-
       const newDeckId = generateId();
-      const newDeck = {
-        id: newDeckId,
-        title: `${genTopic} (AI)`,
-        createdAt: new Date().toISOString(),
-        color: DECK_COLORS[decks.length % 4],
-        isAIGenerated: true,
-        lastModified: Date.now()  // ✅
-      };
-
+      const newDeck = { id: newDeckId, title: `${genTopic} (AI)`, createdAt: new Date().toISOString(), color: DECK_COLORS[decks.length % 4], isAIGenerated: true, lastModified: Date.now() };
       const newCards = wordsArray.map(w => ({
-        id: generateId(),
-        deckId: newDeckId,
-        front: w.front || w.word || '',
-        back: w.back || w.meaning || w.thai || '',
-        phonetic: w.phonetic || '',
-        example: w.example || '',
-        ...SRS.init()  // ✅ มี lastModified
+        id: generateId(), deckId: newDeckId,
+        front: w.front || w.word || '', back: w.back || w.meaning || w.thai || '',
+        phonetic: w.phonetic || '', example: w.example || '',
+        ...SRS.init()
       })).filter(c => c.front && c.back);
-
       if (!newCards.length) throw new Error('No valid cards');
-
       setDecks([...decks, newDeck]);
       setCards([...cards, ...newCards]);
       toggleModal('generateDeck', false);
@@ -1106,27 +952,24 @@ function App() {
       notify(`Generated ${newCards.length} cards! ✨`);
       setSelDeck(newDeck);
       setView('deck');
-    } catch (err) {
-      notify(err.message || 'Generation failed', 'error');
-    }
+    } catch (err) { notify(err.message || 'Generation failed', 'error'); }
     setGenerating(false);
   };
 
   const startStudy = (deckId = null) => {
-    const pool = deckId ? cards.filter(c => c.deckId === deckId && SRS.isDue(c)) : cards.filter(SRS.isDue);
+    // ✅ Filter out deleted cards
+    const activeCards = filterActive(cards);
+    const pool = deckId ? activeCards.filter(c => c.deckId === deckId && SRS.isDue(c)) : activeCards.filter(SRS.isDue);
     if (!pool.length) { notify('No cards due!', 'info'); return; }
     setStudyQ(pool.sort(() => Math.random() - 0.5));
     setCurrCard(0); setFlipped(false); setAiData(null); setShowPractice(false); setView('study');
   };
 
-  // ✅ handleReview - SRS.calculate มี lastModified แล้ว
   const handleReview = (q) => {
     const c = studyQ[currCard];
-    const updated = SRS.calculate(c, q);  // ✅ มี lastModified
-    
+    const updated = SRS.calculate(c, q);
     setCards(cards.map(x => x.id === c.id ? { ...x, ...updated } : x));
     setReviews([...reviews, { cardId: c.id, q, date: new Date().toISOString() }]);
-     
     const today = new Date().toDateString();
     const todayReviews = reviews.filter(r => new Date(r.date).toDateString() === today).length + 1;
     if (todayReviews >= CONFIG.DAILY_GOAL && stats.lastGoalDate !== today) {
@@ -1134,7 +977,6 @@ function App() {
     } else {
       setStats(prev => ({ ...prev, totalReviews: prev.totalReviews + 1 }));
     }
-     
     if (currCard < studyQ.length - 1) {
       setCurrCard(currCard + 1); setFlipped(false); setAiData(null); setShowPractice(false);
     } else { notify('Session complete! 🎉'); setView('home'); }
@@ -1147,11 +989,7 @@ function App() {
       const data = await AIService.getAIHelp(studyQ[currCard].front, studyQ[currCard].back, apiKey);
       setAiData(data);
       if (!studyQ[currCard].example && data.example) {
-        setCards(cards.map(x => x.id === studyQ[currCard].id ? { 
-          ...x, 
-          example: data.example, 
-          lastModified: Date.now()  // ✅
-        } : x));
+        setCards(cards.map(x => x.id === studyQ[currCard].id ? { ...x, example: data.example, lastModified: Date.now() } : x));
       }
     } catch (e) { notify(e.message || 'AI failed', 'error'); }
     setAiLoading(false);
@@ -1166,21 +1004,22 @@ function App() {
     setTimeout(() => window.location.reload(), 1000);
   };
 
-  // Computed
-  const dueCount = useMemo(() => cards.filter(SRS.isDue).length, [cards]);
+  // ✅ Computed values - filter out deleted items
+  const activeDecks = useMemo(() => filterActive(decks), [decks]);
+  const activeCards = useMemo(() => filterActive(cards), [cards]);
+  const dueCount = useMemo(() => activeCards.filter(SRS.isDue).length, [activeCards]);
   const todayProgress = useMemo(() => {
     const today = new Date().toDateString();
     return Math.min(reviews.filter(r => new Date(r.date).toDateString() === today).length, CONFIG.DAILY_GOAL);
   }, [reviews]);
   const filteredCards = useMemo(() => {
     if (!selDeck) return [];
-    const dc = cards.filter(c => c.deckId === selDeck.id);
+    const dc = activeCards.filter(c => c.deckId === selDeck.id);
     if (!searchQuery) return dc;
     const q = searchQuery.toLowerCase();
     return dc.filter(c => c.front.toLowerCase().includes(q) || c.back.toLowerCase().includes(q));
-  }, [cards, selDeck, searchQuery]);
+  }, [activeCards, selDeck, searchQuery]);
 
-  // Loading
   if (isLoading) {
     return (
       <div className="min-h-screen bg-cream flex flex-col items-center justify-center p-4">
@@ -1198,7 +1037,6 @@ function App() {
     <div className="min-h-screen bg-cream text-heading pb-safe">
       <OfflineIndicator isOffline={isOffline} />
        
-      {/* Header */}
       <header className="fixed top-0 w-full bg-white/80 backdrop-blur-lg z-40 pt-safe px-4 pb-3 border-b border-slate-100">
         <div className="flex justify-between items-center max-w-lg mx-auto">
           <button onClick={() => setView('home')} className="flex items-center gap-2">
@@ -1219,7 +1057,6 @@ function App() {
         </div>
       </header>
 
-      {/* Main */}
       <main className="pt-24 px-4 pb-28 max-w-lg mx-auto">
         
         {/* HOME */}
@@ -1257,8 +1094,8 @@ function App() {
 
             <div className="grid grid-cols-3 gap-3">
               {[
-                { value: cards.length, label: 'Cards', color: 'text-primary' },
-                { value: decks.length, label: 'Decks', color: 'text-lavender' },
+                { value: activeCards.length, label: 'Cards', color: 'text-primary' },
+                { value: activeDecks.length, label: 'Decks', color: 'text-lavender' },
                 { value: stats.totalReviews || 0, label: 'Reviews', color: 'text-mint' },
               ].map((s, i) => (
                 <div key={i} className="card p-4 text-center">
@@ -1285,16 +1122,16 @@ function App() {
               </div>
             </div>
 
-            {decks.length === 0 ? (
+            {activeDecks.length === 0 ? (
               <div className="card p-8 text-center border-2 border-dashed">
                 <Icon name="folder-plus" size={48} className="text-muted mx-auto mb-4" />
                 <p className="text-body">No decks yet</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {decks.map((d, idx) => {
+                {activeDecks.map((d, idx) => {
                   const colors = getColorClasses(d.color || DECK_COLORS[idx % 4]);
-                  const dc = cards.filter(c => c.deckId === d.id);
+                  const dc = activeCards.filter(c => c.deckId === d.id);
                   const due = dc.filter(SRS.isDue).length;
                   return (
                     <div key={d.id} onClick={() => { setSelDeck(d); setSearchQuery(''); setView('deck'); }}
@@ -1336,7 +1173,7 @@ function App() {
                   <h1 className="text-2xl font-bold">{selDeck.title}</h1>
                   {selDeck.isAIGenerated && <span className="bg-violet-100 text-lavender text-xs px-2 py-0.5 rounded-full font-medium">AI</span>}
                 </div>
-                <p className="text-muted">{cards.filter(c => c.deckId === selDeck.id).length} cards</p>
+                <p className="text-muted">{activeCards.filter(c => c.deckId === selDeck.id).length} cards</p>
               </div>
               <div className="flex gap-2">
                 <button onClick={handleExport} className="p-2.5 btn-secondary rounded-xl"><Icon name="download" size={18} /></button>
@@ -1347,10 +1184,10 @@ function App() {
 
             <SearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search cards..." />
 
-            {cards.filter(c => c.deckId === selDeck.id && SRS.isDue(c)).length > 0 && (
+            {activeCards.filter(c => c.deckId === selDeck.id && SRS.isDue(c)).length > 0 && (
               <button onClick={() => startStudy(selDeck.id)}
                 className="w-full border-2 border-primary text-primary py-3 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-orange-50">
-                <Icon name="play" size={18} /> Study {cards.filter(c => c.deckId === selDeck.id && SRS.isDue(c)).length} Due
+                <Icon name="play" size={18} /> Study {activeCards.filter(c => c.deckId === selDeck.id && SRS.isDue(c)).length} Due
               </button>
             )}
 
@@ -1429,11 +1266,7 @@ function App() {
 
                   {aiData && (
                     <div className="w-full space-y-3 mb-4">
-                      {aiData.partOfSpeech && (
-                        <span className="inline-block bg-violet-100 text-lavender px-3 py-1 rounded-full text-sm font-medium">
-                          {aiData.partOfSpeech}
-                        </span>
-                      )}
+                      {aiData.partOfSpeech && <span className="inline-block bg-violet-100 text-lavender px-3 py-1 rounded-full text-sm font-medium">{aiData.partOfSpeech}</span>}
                       {aiData.memoryTip && (
                         <div className="bg-amber-50 p-3 rounded-xl border border-amber-100">
                           <p className="text-xs text-gold font-medium mb-1">💡 Memory Tip</p>
@@ -1442,9 +1275,7 @@ function App() {
                       )}
                       {aiData.collocations && (
                         <div className="flex flex-wrap gap-2">
-                          {aiData.collocations.map((col, i) => (
-                            <span key={i} className="bg-emerald-50 text-mint px-2 py-1 rounded text-xs font-medium border border-emerald-100">{col}</span>
-                          ))}
+                          {aiData.collocations.map((col, i) => <span key={i} className="bg-emerald-50 text-mint px-2 py-1 rounded text-xs font-medium border border-emerald-100">{col}</span>)}
                         </div>
                       )}
                     </div>
@@ -1627,13 +1458,14 @@ function App() {
                   <button onClick={() => updateSyncKey(document.getElementById('syncKeyInput').value)}
                     className="w-full mt-3 border-2 border-primary text-primary py-3 rounded-xl font-semibold hover:bg-orange-50">Update Sync Key</button>
                 </div>
-                {/* ✅ Smart Sync Status */}
+                {/* ✅ Soft Delete Status */}
                 <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
                   <div className="flex items-center gap-2 mb-2">
                     <Icon name="shield-check" size={18} className="text-mint" />
-                    <span className="text-sm font-semibold text-mint">Smart Sync v8.3</span>
+                    <span className="text-sm font-semibold text-mint">Smart Sync v8.4</span>
                   </div>
-                  <p className="text-xs text-body">ข้อมูลจะถูก merge อย่างชาญฉลาด ป้องกันการสูญหายของ progress ✅</p>
+                  <p className="text-xs text-body">✅ Soft Delete - ลบแล้วจะไม่กลับมา</p>
+                  <p className="text-xs text-body">✅ Smart Merge - ป้องกัน progress หาย</p>
                 </div>
               </>
             )}
