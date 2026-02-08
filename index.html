@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>VocabLab v8.5 - Focus Mode</title>
+  <title>VocabLab v8.6 - Session Focus</title>
   <meta name="description" content="Master TOEIC vocabulary with spaced repetition and AI assistance">
   <meta name="theme-color" content="#FFFFFF">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -190,8 +190,8 @@
   <script type="text/babel">
 
 // ============================================
-// VOCABLAB v8.5 - FOCUS MODE + SOFT DELETE + GEMINI 2.5
-// Added: Focus Gate feature (surgical strike)
+// VOCABLAB v8.6 - SESSION FOCUS + SOFT DELETE + GEMINI 2.5
+// Changed: Focus Mode → Session-based (resets every visit)
 // ============================================
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
@@ -672,7 +672,7 @@ const SentenceCheckPanel = ({ word, apiKey, onClose }) => {
 // ============================================
 // 🔥 NEW COMPONENT: FOCUS GATE (ขั้นตอนที่ 1)
 // ============================================
-const FocusGate = ({ required, current, isMobile, onStart }) => {
+const FocusGate = ({ required, current, onStart }) => {
   const progress = Math.min((current / required) * 100, 100);
   
   return (
@@ -685,18 +685,18 @@ const FocusGate = ({ required, current, isMobile, onStart }) => {
         <Logo size={80} />
       </div>
 
-      <h1 className="text-3xl font-extrabold text-heading mb-2">Focus Mode Active</h1>
+      <h1 className="text-3xl font-extrabold text-heading mb-2">Focus Checkpoint</h1>
       <p className="text-muted text-sm mb-6 uppercase tracking-wider font-bold">
-        {isMobile ? 'Mobile Restricted' : 'Desktop Productivity'}
+        Session Lock Active
       </p>
 
       <div className="bg-white p-6 rounded-3xl shadow-elevated w-full max-w-sm mb-8 border border-slate-100">
         <p className="text-body mb-4">
-          คุณต้องทบทวนศัพท์ <strong className="text-primary">{required}</strong> คำ ก่อนที่จะเข้าใช้งานส่วนอื่น
+          ทบทวนศัพท์ <strong className="text-primary">{required}</strong> คำ เพื่อปลดล็อกแอปในรอบนี้
         </p>
         
         <div className="flex justify-between items-end mb-2">
-          <span className="text-3xl font-bold text-heading">{current}</span>
+          <span className="text-4xl font-bold text-heading">{current}</span>
           <span className="text-lg text-muted font-medium mb-1">/ {required}</span>
         </div>
         
@@ -730,11 +730,13 @@ function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 🔥 ขั้นตอนที่ 2: State สำหรับ Focus Mode
+  // 🔥 SESSION STATE (Resets on every page refresh - not stored)
+  const [sessionCount, setSessionCount] = useState(0);
+
+  // 🔥 FOCUS SETTINGS (Stored in localStorage)
   const [focusSettings, setFocusSettings] = useState(DB.get('focus_settings', { 
     enabled: false, 
-    pcTarget: 5, 
-    mobileTarget: 10 
+    cardsPerVisit: 3 
   }));
 
   // 🔥 บันทึกเมื่อตั้งค่าเปลี่ยน
@@ -964,11 +966,10 @@ function App() {
   const startStudy = (deckId = null) => {
     const activeCardsAll = filterActive(cards);
     
-    // 1. หาการ์ดที่ครบกำหนดตามปกติ
     let pool = deckId ? activeCardsAll.filter(c => c.deckId === deckId && SRS.isDue(c)) : activeCardsAll.filter(SRS.isDue);
 
-    // 🔥 2. Safety Logic: ถ้าติด Focus Mode แล้วไม่มีการ์ด Due ให้ดึงการ์ดเก่ามาทวน
-    if (pool.length === 0 && focusSettings.enabled && todayProgress < (isMobile ? focusSettings.mobileTarget : focusSettings.pcTarget)) {
+    // 🔥 Safety: ถ้าติด Focus Lock แล้วไม่มีการ์ด Due → สุ่มการ์ดเก่ามาทวน
+    if (pool.length === 0 && isFocusLocked) {
       pool = activeCardsAll.sort(() => Math.random() - 0.5).slice(0, 10);
       if (pool.length > 0) notify('No due cards. Starting Random Review to unlock! 🛡️', 'info');
     }
@@ -991,6 +992,18 @@ function App() {
     } else {
       setStats(prev => ({ ...prev, totalReviews: prev.totalReviews + 1 }));
     }
+
+    // 🔥 Session Focus: นับคำที่ทำใน session นี้
+    const nextSessionCount = sessionCount + 1;
+    setSessionCount(nextSessionCount);
+
+    // 🔥 ถ้าทำครบเป้า Focus → ปลดล็อก + เด้งกลับ Home ทันที
+    if (focusSettings.enabled && nextSessionCount >= (focusSettings.cardsPerVisit || 3)) {
+      notify(`ปลดล็อกแล้ว! ทบทวนครบ ${nextSessionCount} คำ 🎉`);
+      setView('home');
+      return;
+    }
+
     if (currCard < studyQ.length - 1) {
       setCurrCard(currCard + 1); setFlipped(false); setAiData(null); setShowPractice(false);
     } else { notify('Session complete! 🎉'); setView('home'); }
@@ -1034,14 +1047,11 @@ function App() {
     return dc.filter(c => c.front.toLowerCase().includes(q) || c.back.toLowerCase().includes(q));
   }, [activeCards, selDeck, searchQuery]);
 
-  // 🔥 ขั้นตอนที่ 3: Logic คำนวณการล็อก (FOCUS MODE)
-  const isMobile = window.innerWidth < 768;
-  const focusRequired = isMobile ? focusSettings.mobileTarget : focusSettings.pcTarget;
-  
+  // 🔥 FOCUS LOCK: Session-based (ล็อกทุกครั้งที่เปิดเว็บใหม่)
   const isFocusLocked = useMemo(() => {
     if (!focusSettings.enabled) return false;
-    return todayProgress < focusRequired;
-  }, [focusSettings, todayProgress, focusRequired]);
+    return sessionCount < (focusSettings.cardsPerVisit || 3);
+  }, [focusSettings, sessionCount]);
 
   if (isLoading) {
     return (
@@ -1060,12 +1070,11 @@ function App() {
     <div className="min-h-screen bg-cream text-heading pb-safe">
       <OfflineIndicator isOffline={isOffline} />
 
-      {/* 🔥 ขั้นตอนที่ 4.1: Focus Gate - ล็อกหน้าจอถ้ายังเรียนไม่ครบ */}
+      {/* 🔥 FOCUS GATE: ล็อกทุกครั้งที่เปิดเว็บจนกว่าจะทำครบ */}
       {isFocusLocked && view !== 'study' && (
         <FocusGate 
-          required={focusRequired} 
-          current={todayProgress} 
-          isMobile={isMobile}
+          required={focusSettings.cardsPerVisit || 3} 
+          current={sessionCount} 
           onStart={() => startStudy()} 
         />
       )}
@@ -1265,6 +1274,11 @@ function App() {
                 <Icon name="x" size={20} className="text-muted" />
               </button>
               <div className="flex items-center gap-3">
+                {focusSettings.enabled && (
+                  <span className="text-xs bg-orange-50 text-primary px-2.5 py-1 rounded-full font-bold">
+                    Session {sessionCount + 1}/{focusSettings.cardsPerVisit}
+                  </span>
+                )}
                 <span className="text-sm text-muted font-medium">{currCard + 1}/{studyQ.length}</span>
                 <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden">
                   <div className="h-full bg-gradient-to-r from-primary to-gold rounded-full transition-all" 
@@ -1473,7 +1487,7 @@ function App() {
               <>
                 <h3 className="text-xl font-bold mb-6">Settings</h3>
 
-                {/* 🔥 ขั้นตอนที่ 4.2: ส่วนตั้งค่า Focus Mode */}
+                {/* 🔥 FOCUS MODE SETTINGS (Session-Based) */}
                 <div className="bg-slate-50 p-4 rounded-2xl mb-6 border border-slate-100">
                   <div className="flex justify-between items-center mb-3">
                     <div className="flex items-center gap-2">
@@ -1482,7 +1496,7 @@ function App() {
                       </div>
                       <div>
                         <h4 className="font-bold text-heading">Focus Mode</h4>
-                        <p className="text-xs text-muted">บังคับเรียนก่อนเล่น</p>
+                        <p className="text-xs text-muted">บังคับเรียนทุกครั้งที่เข้าเว็บ</p>
                       </div>
                     </div>
                     <button 
@@ -1493,25 +1507,21 @@ function App() {
                   </div>
                   
                   {focusSettings.enabled && (
-                    <div className="grid grid-cols-2 gap-3 mt-3 animate-fade-in">
-                      <div>
-                        <label className="text-xs font-bold text-muted uppercase block mb-1">เป้าหมายมือถือ</label>
-                        <input 
-                          type="number" min="1" max="50"
-                          value={focusSettings.mobileTarget} 
-                          onChange={e => setFocusSettings(prev => ({...prev, mobileTarget: Math.max(1, Number(e.target.value) || 1)}))}
-                          className="w-full input-clean p-2 rounded-lg text-center font-bold" 
-                        />
+                    <div className="animate-fade-in">
+                      <label className="text-xs font-bold text-muted uppercase block mb-2">จำนวนคำต่อครั้ง (Cards per Visit)</label>
+                      <div className="flex gap-2">
+                        {[3, 5, 10, 15].map(n => (
+                          <button key={n} onClick={() => setFocusSettings(prev => ({...prev, cardsPerVisit: n}))}
+                            className={`flex-1 py-2.5 rounded-xl font-bold text-sm border transition-all ${
+                              focusSettings.cardsPerVisit === n 
+                                ? 'bg-primary text-white border-primary shadow-button' 
+                                : 'bg-white text-body border-slate-200 hover:border-primary'
+                            }`}>
+                            {n}
+                          </button>
+                        ))}
                       </div>
-                      <div>
-                        <label className="text-xs font-bold text-muted uppercase block mb-1">เป้าหมาย PC</label>
-                        <input 
-                          type="number" min="1" max="50"
-                          value={focusSettings.pcTarget} 
-                          onChange={e => setFocusSettings(prev => ({...prev, pcTarget: Math.max(1, Number(e.target.value) || 1)}))}
-                          className="w-full input-clean p-2 rounded-lg text-center font-bold" 
-                        />
-                      </div>
+                      <p className="text-xs text-muted mt-2">เปิดเว็บทีนึง ต้องทวน {focusSettings.cardsPerVisit} คำ ก่อนใช้งานอื่น</p>
                     </div>
                   )}
                 </div>
@@ -1538,11 +1548,11 @@ function App() {
                 <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
                   <div className="flex items-center gap-2 mb-2">
                     <Icon name="shield-check" size={18} className="text-mint" />
-                    <span className="text-sm font-semibold text-mint">Smart Sync v8.5</span>
+                    <span className="text-sm font-semibold text-mint">Smart Sync v8.6</span>
                   </div>
                   <p className="text-xs text-body">✅ Soft Delete - ลบแล้วจะไม่กลับมา</p>
                   <p className="text-xs text-body">✅ Smart Merge - ป้องกัน progress หาย</p>
-                  <p className="text-xs text-body">✅ Focus Mode - บังคับเรียนก่อนใช้งาน</p>
+                  <p className="text-xs text-body">✅ Session Focus - บังคับเรียนทุกครั้งที่เข้าเว็บ</p>
                 </div>
               </>
             )}
