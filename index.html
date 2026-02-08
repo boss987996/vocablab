@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>VocabLab v8.4 - Gemini 2.5 & Soft Delete</title>
+  <title>VocabLab v8.5 - Focus Mode</title>
   <meta name="description" content="Master TOEIC vocabulary with spaced repetition and AI assistance">
   <meta name="theme-color" content="#FFFFFF">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -190,8 +190,8 @@
   <script type="text/babel">
 
 // ============================================
-// VOCABLAB v8.4 - SOFT DELETE + GEMINI 2.5
-// Fixed: Deleted items logic + SRS Reset issue
+// VOCABLAB v8.5 - FOCUS MODE + SOFT DELETE + GEMINI 2.5
+// Added: Focus Gate feature (surgical strike)
 // ============================================
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
@@ -212,7 +212,7 @@ const CONFIG = {
   INTERVALS: [1, 3, 7, 14, 30],
   DEFAULT_EASE: 2.5,
   DAILY_GOAL: 20,
-  TOMBSTONE_EXPIRY_DAYS: 30, // ลบ tombstone หลัง 30 วัน
+  TOMBSTONE_EXPIRY_DAYS: 30,
 };
 
 const STARTER_DECK = { id: 'starter_deck_001', title: 'TOEIC Essential', createdAt: new Date().toISOString(), color: 'primary', lastModified: Date.now() };
@@ -228,76 +228,40 @@ const STARTER_CARDS = [
 // 🔥 SMART MERGE v2 - with Soft Delete Support
 // ============================================
 const SmartMerge = {
-  /**
-   * Merge cards with Soft Delete support
-   * - deleted: true = tombstone (ทำเครื่องหมายว่าลบแล้ว)
-   * - ถ้า local deleted และใหม่กว่า → ใช้ local
-   * - Filter out deleted items ก่อน return
-   */
   mergeCards(localCards, cloudCards) {
     if (!cloudCards || cloudCards.length === 0) return localCards || [];
     if (!localCards || localCards.length === 0) return cloudCards;
-
     const merged = new Map();
-     
-    // 1. เพิ่ม cloud cards ก่อน
-    cloudCards.forEach(card => {
-      merged.set(card.id, { ...card });
-    });
-     
-    // 2. เปรียบเทียบกับ local cards
+    cloudCards.forEach(card => { merged.set(card.id, { ...card }); });
     localCards.forEach(localCard => {
       const cloudCard = merged.get(localCard.id);
-       
       if (!cloudCard) {
-        // Card มีแค่ใน local → เพิ่มเข้าไป
         merged.set(localCard.id, localCard);
       } else {
         const localTime = localCard.lastModified || 0;
         const cloudTime = cloudCard.lastModified || 0;
-         
-        // ✅ Logic สำหรับ Soft Delete
         if (localCard.deleted && localTime >= cloudTime) {
-          // Local ลบแล้วและใหม่กว่า → ใช้ local (ให้มันโดนลบ)
-          // console.log(`[Merge] Keep deleted (local): ${localCard.front}`);
           merged.set(localCard.id, localCard);
         } else if (cloudCard.deleted && cloudTime > localTime) {
-          // Cloud ลบแล้วและใหม่กว่า → ใช้ cloud
-          // console.log(`[Merge] Keep deleted (cloud): ${cloudCard.front}`);
           merged.set(localCard.id, cloudCard);
         } else if (localTime >= cloudTime) {
-          // Local ใหม่กว่า → ใช้ local
           merged.set(localCard.id, localCard);
         }
-        // ถ้า cloud ใหม่กว่าจะใช้ cloud ที่ set ไว้แล้ว
       }
     });
-     
-    // 3. ✅ Filter out deleted items และ clean up old tombstones
     const now = Date.now();
     const expiryTime = CONFIG.TOMBSTONE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-     
     return Array.from(merged.values()).filter(card => {
       if (!card.deleted) return true;
-      // ถ้า tombstone เก่ากว่า 30 วัน → ลบจริง
-      if (card.deletedAt && (now - card.deletedAt) > expiryTime) {
-        console.log(`[Cleanup] Removing old tombstone: ${card.front}`);
-        return false;
-      }
-      // เก็บ tombstone ไว้สำหรับ sync (แต่จะไม่แสดงใน UI)
+      if (card.deletedAt && (now - card.deletedAt) > expiryTime) return false;
       return true;
     });
   },
-
-  // Merge decks with Soft Delete support
   mergeDecks(localDecks, cloudDecks) {
     if (!cloudDecks || cloudDecks.length === 0) return localDecks || [];
     if (!localDecks || localDecks.length === 0) return cloudDecks;
-
     const merged = new Map();
-     
     cloudDecks.forEach(deck => merged.set(deck.id, { ...deck }));
-     
     localDecks.forEach(localDeck => {
       const cloudDeck = merged.get(localDeck.id);
       if (!cloudDeck) {
@@ -305,8 +269,6 @@ const SmartMerge = {
       } else {
         const localTime = localDeck.lastModified || new Date(localDeck.createdAt || 0).getTime();
         const cloudTime = cloudDeck.lastModified || new Date(cloudDeck.createdAt || 0).getTime();
-         
-        // ✅ Soft Delete logic
         if (localDeck.deleted && localTime >= cloudTime) {
           merged.set(localDeck.id, localDeck);
         } else if (cloudDeck.deleted && cloudTime > localTime) {
@@ -316,22 +278,17 @@ const SmartMerge = {
         }
       }
     });
-     
     const now = Date.now();
     const expiryTime = CONFIG.TOMBSTONE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-     
     return Array.from(merged.values()).filter(deck => {
       if (!deck.deleted) return true;
       if (deck.deletedAt && (now - deck.deletedAt) > expiryTime) return false;
       return true;
     });
   },
-
-  // Merge reviews
   mergeReviews(localReviews, cloudReviews) {
     if (!cloudReviews || cloudReviews.length === 0) return localReviews || [];
     if (!localReviews || localReviews.length === 0) return cloudReviews;
-
     const merged = new Map();
     [...cloudReviews, ...localReviews].forEach(review => {
       const key = `${review.cardId}_${review.date}`;
@@ -339,8 +296,6 @@ const SmartMerge = {
     });
     return Array.from(merged.values());
   },
-
-  // Merge stats
   mergeStats(localStats, cloudStats) {
     if (!cloudStats) return localStats || { streak: 0, totalReviews: 0 };
     if (!localStats) return cloudStats;
@@ -353,9 +308,6 @@ const SmartMerge = {
   }
 };
 
-// ============================================
-// Helper: Filter active items (not deleted)
-// ============================================
 const filterActive = (items) => items.filter(item => !item.deleted);
 
 // ============================================
@@ -388,7 +340,7 @@ const Logo = ({ size = 32, className = '' }) => (
 );
 
 // ============================================
-// AI SERVICE - UPDATED TO GEMINI 2.5 FLASH
+// AI SERVICE - GEMINI 2.5 FLASH
 // ============================================
 const AIService = {
   async callGemini(prompt, apiKey) {
@@ -397,7 +349,6 @@ const AIService = {
       generationConfig: { temperature: 0.7, maxOutputTokens: 2048, responseMimeType: "application/json" }
     };
     try {
-      // ✅ Changed to gemini-2.5-flash
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
@@ -405,7 +356,6 @@ const AIService = {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
-        
         if (response.status === 400) throw new Error('API Key invalid');
         if (response.status === 403) throw new Error('Quota exceeded');
         if (response.status === 429) throw new Error('Rate limit - wait and retry');
@@ -415,7 +365,6 @@ const AIService = {
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) throw new Error('Empty response');
       try { 
-        // Handle potential markdown code blocks in response
         const cleanText = text.replace(/```json\n?|\n?```/g, '');
         return JSON.parse(cleanText); 
       } catch {
@@ -566,30 +515,17 @@ const SRS = {
   },
   calculate(card, q) {
     let { repetitions = 0, intervalIndex = 0, easeFactor = 2.5 } = card;
-    
-    // ✅ Logic ที่แก้แล้ว: Hard ไม่ Reset
-    if (q === 0) { // Again
-      repetitions = 0; 
-      intervalIndex = 0; 
-    } else {
+    if (q === 0) { repetitions = 0; intervalIndex = 0; }
+    else {
       repetitions++;
-      if (q === 1) { 
-        // Hard: Keep interval
-      } else if (q === 2) { 
-        // Good: Advance
-        intervalIndex = Math.min(intervalIndex + 1, CONFIG.INTERVALS.length - 1);
-      } else if (q === 3) {
-        // Easy: Jump
-        intervalIndex = Math.min(intervalIndex + 2, CONFIG.INTERVALS.length - 1);
-      }
+      if (q === 1) { /* Hard: Keep interval */ }
+      else if (q === 2) { intervalIndex = Math.min(intervalIndex + 1, CONFIG.INTERVALS.length - 1); }
+      else if (q === 3) { intervalIndex = Math.min(intervalIndex + 2, CONFIG.INTERVALS.length - 1); }
     }
-    
     const eq = q + 2;
     easeFactor = Math.max(1.3, easeFactor + (0.1 - (5 - eq) * (0.08 + (5 - eq) * 0.02)));
-    
     const nextDate = new Date();
     nextDate.setDate(nextDate.getDate() + CONFIG.INTERVALS[intervalIndex]);
-    
     return { repetitions, intervalIndex, easeFactor, nextReviewAt: nextDate.toISOString(), lastModified: Date.now() };
   },
   isDue: (c) => !c.deleted && (!c.nextReviewAt || new Date(c.nextReviewAt) <= new Date())
@@ -734,6 +670,50 @@ const SentenceCheckPanel = ({ word, apiKey, onClose }) => {
 };
 
 // ============================================
+// 🔥 NEW COMPONENT: FOCUS GATE (ขั้นตอนที่ 1)
+// ============================================
+const FocusGate = ({ required, current, isMobile, onStart }) => {
+  const progress = Math.min((current / required) * 100, 100);
+  
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 text-center animate-fade-in" style={{background: 'rgba(255,255,255,0.98)', backdropFilter: 'blur(10px)'}}>
+      <div className="absolute top-0 w-full h-1 bg-slate-100">
+        <div className="h-full bg-gradient-to-r from-primary to-gold transition-all duration-1000" style={{ width: `${progress}%` }}></div>
+      </div>
+      
+      <div className="animate-float mb-8">
+        <Logo size={80} />
+      </div>
+
+      <h1 className="text-3xl font-extrabold text-heading mb-2">Focus Mode Active</h1>
+      <p className="text-muted text-sm mb-6 uppercase tracking-wider font-bold">
+        {isMobile ? 'Mobile Restricted' : 'Desktop Productivity'}
+      </p>
+
+      <div className="bg-white p-6 rounded-3xl shadow-elevated w-full max-w-sm mb-8 border border-slate-100">
+        <p className="text-body mb-4">
+          คุณต้องทบทวนศัพท์ <strong className="text-primary">{required}</strong> คำ ก่อนที่จะเข้าใช้งานส่วนอื่น
+        </p>
+        
+        <div className="flex justify-between items-end mb-2">
+          <span className="text-3xl font-bold text-heading">{current}</span>
+          <span className="text-lg text-muted font-medium mb-1">/ {required}</span>
+        </div>
+        
+        <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-primary to-gold rounded-full transition-all duration-500"
+            style={{ width: `${progress}%` }}></div>
+        </div>
+      </div>
+
+      <button onClick={onStart} className="w-full max-w-sm btn-primary py-4 rounded-2xl text-xl flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform transition-all hover:-translate-y-1">
+        <Icon name="play" size={24} fill="currentColor" /> เริ่มเรียนทันที
+      </button>
+    </div>
+  );
+};
+
+// ============================================
 // MAIN APP
 // ============================================
 function App() {
@@ -749,6 +729,18 @@ function App() {
   const [currentSyncKey, setCurrentSyncKey] = useState('');
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 🔥 ขั้นตอนที่ 2: State สำหรับ Focus Mode
+  const [focusSettings, setFocusSettings] = useState(DB.get('focus_settings', { 
+    enabled: false, 
+    pcTarget: 5, 
+    mobileTarget: 10 
+  }));
+
+  // 🔥 บันทึกเมื่อตั้งค่าเปลี่ยน
+  useEffect(() => {
+    DB.set('focus_settings', focusSettings);
+  }, [focusSettings]);
    
   const syncTimer = useRef(null);
   const lastSaveTime = useRef(0);
@@ -880,29 +872,17 @@ function App() {
     notify('Deck created! 🎉');
   };
 
-  // ✅ SOFT DELETE - Deck
   const deleteDeck = (deckId) => {
     setConfirmDialog({
       isOpen: true, type: 'danger', title: 'Delete Deck?',
       message: 'This will permanently delete the deck and all its cards.',
       onConfirm: () => {
         const now = Date.now();
-        // ✅ Soft delete deck - mark as deleted instead of filtering out
-        setDecks(decks.map(d => 
-          d.id === deckId 
-            ? { ...d, deleted: true, deletedAt: now, lastModified: now }
-            : d
-        ));
-        // ✅ Soft delete all cards in this deck
-        setCards(cards.map(c => 
-          c.deckId === deckId 
-            ? { ...c, deleted: true, deletedAt: now, lastModified: now }
-            : c
-        ));
+        setDecks(decks.map(d => d.id === deckId ? { ...d, deleted: true, deletedAt: now, lastModified: now } : d));
+        setCards(cards.map(c => c.deckId === deckId ? { ...c, deleted: true, deletedAt: now, lastModified: now } : c));
         setConfirmDialog({ isOpen: false });
         setView('library');
         notify('Deck deleted');
-        console.log(`[Delete] Soft deleted deck: ${deckId}`);
       }
     });
   };
@@ -920,22 +900,15 @@ function App() {
     notify('Card updated');
   };
 
-  // ✅ SOFT DELETE - Card
   const deleteCard = (id) => {
     setConfirmDialog({
       isOpen: true, type: 'danger', title: 'Delete Card?',
       message: 'This card will be permanently removed.',
       onConfirm: () => {
         const now = Date.now();
-        // ✅ Soft delete - mark as deleted instead of filtering out
-        setCards(cards.map(c => 
-          c.id === id 
-            ? { ...c, deleted: true, deletedAt: now, lastModified: now }
-            : c
-        ));
+        setCards(cards.map(c => c.id === id ? { ...c, deleted: true, deletedAt: now, lastModified: now } : c));
         setConfirmDialog({ isOpen: false });
         notify('Card deleted');
-        console.log(`[Delete] Soft deleted card: ${id}`);
       }
     });
   };
@@ -989,10 +962,19 @@ function App() {
   };
 
   const startStudy = (deckId = null) => {
-    // ✅ Filter out deleted cards
-    const activeCards = filterActive(cards);
-    const pool = deckId ? activeCards.filter(c => c.deckId === deckId && SRS.isDue(c)) : activeCards.filter(SRS.isDue);
-    if (!pool.length) { notify('No cards due!', 'info'); return; }
+    const activeCardsAll = filterActive(cards);
+    
+    // 1. หาการ์ดที่ครบกำหนดตามปกติ
+    let pool = deckId ? activeCardsAll.filter(c => c.deckId === deckId && SRS.isDue(c)) : activeCardsAll.filter(SRS.isDue);
+
+    // 🔥 2. Safety Logic: ถ้าติด Focus Mode แล้วไม่มีการ์ด Due ให้ดึงการ์ดเก่ามาทวน
+    if (pool.length === 0 && focusSettings.enabled && todayProgress < (isMobile ? focusSettings.mobileTarget : focusSettings.pcTarget)) {
+      pool = activeCardsAll.sort(() => Math.random() - 0.5).slice(0, 10);
+      if (pool.length > 0) notify('No due cards. Starting Random Review to unlock! 🛡️', 'info');
+    }
+
+    if (!pool.length) { notify('No cards available to study!', 'warning'); return; }
+    
     setStudyQ(pool.sort(() => Math.random() - 0.5));
     setCurrCard(0); setFlipped(false); setAiData(null); setShowPractice(false); setView('study');
   };
@@ -1036,7 +1018,7 @@ function App() {
     setTimeout(() => window.location.reload(), 1000);
   };
 
-  // ✅ Computed values - filter out deleted items
+  // Computed values
   const activeDecks = useMemo(() => filterActive(decks), [decks]);
   const activeCards = useMemo(() => filterActive(cards), [cards]);
   const dueCount = useMemo(() => activeCards.filter(SRS.isDue).length, [activeCards]);
@@ -1051,6 +1033,15 @@ function App() {
     const q = searchQuery.toLowerCase();
     return dc.filter(c => c.front.toLowerCase().includes(q) || c.back.toLowerCase().includes(q));
   }, [activeCards, selDeck, searchQuery]);
+
+  // 🔥 ขั้นตอนที่ 3: Logic คำนวณการล็อก (FOCUS MODE)
+  const isMobile = window.innerWidth < 768;
+  const focusRequired = isMobile ? focusSettings.mobileTarget : focusSettings.pcTarget;
+  
+  const isFocusLocked = useMemo(() => {
+    if (!focusSettings.enabled) return false;
+    return todayProgress < focusRequired;
+  }, [focusSettings, todayProgress, focusRequired]);
 
   if (isLoading) {
     return (
@@ -1068,6 +1059,16 @@ function App() {
   return (
     <div className="min-h-screen bg-cream text-heading pb-safe">
       <OfflineIndicator isOffline={isOffline} />
+
+      {/* 🔥 ขั้นตอนที่ 4.1: Focus Gate - ล็อกหน้าจอถ้ายังเรียนไม่ครบ */}
+      {isFocusLocked && view !== 'study' && (
+        <FocusGate 
+          required={focusRequired} 
+          current={todayProgress} 
+          isMobile={isMobile}
+          onStart={() => startStudy()} 
+        />
+      )}
        
       <header className="fixed top-0 w-full bg-white/80 backdrop-blur-lg z-40 pt-safe px-4 pb-3 border-b border-slate-100">
         <div className="flex justify-between items-center max-w-lg mx-auto">
@@ -1471,6 +1472,50 @@ function App() {
             {modals.settings && (
               <>
                 <h3 className="text-xl font-bold mb-6">Settings</h3>
+
+                {/* 🔥 ขั้นตอนที่ 4.2: ส่วนตั้งค่า Focus Mode */}
+                <div className="bg-slate-50 p-4 rounded-2xl mb-6 border border-slate-100">
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-primary text-white rounded-lg">
+                        <Icon name="lock" size={16} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-heading">Focus Mode</h4>
+                        <p className="text-xs text-muted">บังคับเรียนก่อนเล่น</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setFocusSettings(prev => ({...prev, enabled: !prev.enabled}))}
+                      className={`w-12 h-7 rounded-full transition-colors relative ${focusSettings.enabled ? 'bg-primary' : 'bg-slate-300'}`}>
+                      <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-all ${focusSettings.enabled ? 'left-6' : 'left-1'}`}></div>
+                    </button>
+                  </div>
+                  
+                  {focusSettings.enabled && (
+                    <div className="grid grid-cols-2 gap-3 mt-3 animate-fade-in">
+                      <div>
+                        <label className="text-xs font-bold text-muted uppercase block mb-1">เป้าหมายมือถือ</label>
+                        <input 
+                          type="number" min="1" max="50"
+                          value={focusSettings.mobileTarget} 
+                          onChange={e => setFocusSettings(prev => ({...prev, mobileTarget: Math.max(1, Number(e.target.value) || 1)}))}
+                          className="w-full input-clean p-2 rounded-lg text-center font-bold" 
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-muted uppercase block mb-1">เป้าหมาย PC</label>
+                        <input 
+                          type="number" min="1" max="50"
+                          value={focusSettings.pcTarget} 
+                          onChange={e => setFocusSettings(prev => ({...prev, pcTarget: Math.max(1, Number(e.target.value) || 1)}))}
+                          className="w-full input-clean p-2 rounded-lg text-center font-bold" 
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="mb-6">
                   <label className="text-xs font-bold text-muted uppercase block mb-2">Gemini API Key</label>
                   <input value={apiKey} onChange={e => setApiKey(e.target.value)}
@@ -1490,14 +1535,14 @@ function App() {
                   <button onClick={() => updateSyncKey(document.getElementById('syncKeyInput').value)}
                     className="w-full mt-3 border-2 border-primary text-primary py-3 rounded-xl font-semibold hover:bg-orange-50">Update Sync Key</button>
                 </div>
-                {/* ✅ Soft Delete Status */}
                 <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
                   <div className="flex items-center gap-2 mb-2">
                     <Icon name="shield-check" size={18} className="text-mint" />
-                    <span className="text-sm font-semibold text-mint">Smart Sync v8.4</span>
+                    <span className="text-sm font-semibold text-mint">Smart Sync v8.5</span>
                   </div>
                   <p className="text-xs text-body">✅ Soft Delete - ลบแล้วจะไม่กลับมา</p>
                   <p className="text-xs text-body">✅ Smart Merge - ป้องกัน progress หาย</p>
+                  <p className="text-xs text-body">✅ Focus Mode - บังคับเรียนก่อนใช้งาน</p>
                 </div>
               </>
             )}
