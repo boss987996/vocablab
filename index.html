@@ -575,7 +575,9 @@ function App() {
     else setStats(prev => ({ ...prev, totalReviews: prev.totalReviews + 1 }));
 
     const nextSC = sessionCount + 1; setSessionCount(nextSC);
-    if (focusSettings.enabled && nextSC >= (focusSettings.cardsPerVisit || 3)) { notify(`ปลดล็อกแล้ว! ทบทวนครบ ${nextSC} คำ 🎉`); setView('home'); return; }
+    const focusTarget = focusSettings.cardsPerVisit || 3;
+    // 🔥 เด้งกลับ Home เฉพาะตอน "เพิ่งปลดล็อก" เท่านั้น (sessionCount ยังไม่ถึงเป้า → พอดีถึงเป้า)
+    if (focusSettings.enabled && sessionCount < focusTarget && nextSC >= focusTarget) { notify(`ปลดล็อกแล้ว! ทบทวนครบ ${nextSC} คำ 🎉`); setView('home'); return; }
     if (currCard < studyQ.length - 1) { setCurrCard(currCard + 1); setFlipped(false); setAiData(null); setShowPractice(false); } else { notify('Session complete! 🎉'); setView('home'); }
   };
 
