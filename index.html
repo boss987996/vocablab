@@ -191,12 +191,11 @@
 
 // ============================================
 // VOCABLAB v8.6 - SESSION FOCUS + SOFT DELETE + GEMINI 2.5
-// Changed: Focus Mode → Session-based (resets every visit)
+// Fixed: Focus Gate only on Home (view === 'home')
 // ============================================
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
-// --- FIREBASE CONFIG ---
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBRMfkAPR0492BOleYkk7O1ELal6ncNCeY",
   authDomain: "vocab-b-23bd8.firebaseapp.com",
@@ -224,9 +223,6 @@ const STARTER_CARDS = [
   { front: 'collaborate', back: 'ร่วมมือกัน', phonetic: '/kəˈlæbəreɪt/', example: 'Teams collaborate across departments.' },
 ];
 
-// ============================================
-// 🔥 SMART MERGE v2 - with Soft Delete Support
-// ============================================
 const SmartMerge = {
   mergeCards(localCards, cloudCards) {
     if (!cloudCards || cloudCards.length === 0) return localCards || [];
@@ -235,27 +231,18 @@ const SmartMerge = {
     cloudCards.forEach(card => { merged.set(card.id, { ...card }); });
     localCards.forEach(localCard => {
       const cloudCard = merged.get(localCard.id);
-      if (!cloudCard) {
-        merged.set(localCard.id, localCard);
-      } else {
+      if (!cloudCard) { merged.set(localCard.id, localCard); }
+      else {
         const localTime = localCard.lastModified || 0;
         const cloudTime = cloudCard.lastModified || 0;
-        if (localCard.deleted && localTime >= cloudTime) {
-          merged.set(localCard.id, localCard);
-        } else if (cloudCard.deleted && cloudTime > localTime) {
-          merged.set(localCard.id, cloudCard);
-        } else if (localTime >= cloudTime) {
-          merged.set(localCard.id, localCard);
-        }
+        if (localCard.deleted && localTime >= cloudTime) merged.set(localCard.id, localCard);
+        else if (cloudCard.deleted && cloudTime > localTime) merged.set(localCard.id, cloudCard);
+        else if (localTime >= cloudTime) merged.set(localCard.id, localCard);
       }
     });
     const now = Date.now();
-    const expiryTime = CONFIG.TOMBSTONE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-    return Array.from(merged.values()).filter(card => {
-      if (!card.deleted) return true;
-      if (card.deletedAt && (now - card.deletedAt) > expiryTime) return false;
-      return true;
-    });
+    const expiryTime = CONFIG.TOMBSTONE_EXPIRY_DAYS * 86400000;
+    return Array.from(merged.values()).filter(card => !card.deleted || (card.deletedAt && (now - card.deletedAt) <= expiryTime));
   },
   mergeDecks(localDecks, cloudDecks) {
     if (!cloudDecks || cloudDecks.length === 0) return localDecks || [];
@@ -264,130 +251,59 @@ const SmartMerge = {
     cloudDecks.forEach(deck => merged.set(deck.id, { ...deck }));
     localDecks.forEach(localDeck => {
       const cloudDeck = merged.get(localDeck.id);
-      if (!cloudDeck) {
-        merged.set(localDeck.id, localDeck);
-      } else {
+      if (!cloudDeck) { merged.set(localDeck.id, localDeck); }
+      else {
         const localTime = localDeck.lastModified || new Date(localDeck.createdAt || 0).getTime();
         const cloudTime = cloudDeck.lastModified || new Date(cloudDeck.createdAt || 0).getTime();
-        if (localDeck.deleted && localTime >= cloudTime) {
-          merged.set(localDeck.id, localDeck);
-        } else if (cloudDeck.deleted && cloudTime > localTime) {
-          merged.set(localDeck.id, cloudDeck);
-        } else if (localTime >= cloudTime) {
-          merged.set(localDeck.id, localDeck);
-        }
+        if (localDeck.deleted && localTime >= cloudTime) merged.set(localDeck.id, localDeck);
+        else if (cloudDeck.deleted && cloudTime > localTime) merged.set(localDeck.id, cloudDeck);
+        else if (localTime >= cloudTime) merged.set(localDeck.id, localDeck);
       }
     });
     const now = Date.now();
-    const expiryTime = CONFIG.TOMBSTONE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-    return Array.from(merged.values()).filter(deck => {
-      if (!deck.deleted) return true;
-      if (deck.deletedAt && (now - deck.deletedAt) > expiryTime) return false;
-      return true;
-    });
+    const expiryTime = CONFIG.TOMBSTONE_EXPIRY_DAYS * 86400000;
+    return Array.from(merged.values()).filter(deck => !deck.deleted || (deck.deletedAt && (now - deck.deletedAt) <= expiryTime));
   },
-  mergeReviews(localReviews, cloudReviews) {
-    if (!cloudReviews || cloudReviews.length === 0) return localReviews || [];
-    if (!localReviews || localReviews.length === 0) return cloudReviews;
-    const merged = new Map();
-    [...cloudReviews, ...localReviews].forEach(review => {
-      const key = `${review.cardId}_${review.date}`;
-      merged.set(key, review);
-    });
-    return Array.from(merged.values());
-  },
-  mergeStats(localStats, cloudStats) {
-    if (!cloudStats) return localStats || { streak: 0, totalReviews: 0 };
-    if (!localStats) return cloudStats;
-    return {
-      streak: Math.max(localStats.streak || 0, cloudStats.streak || 0),
-      totalReviews: Math.max(localStats.totalReviews || 0, cloudStats.totalReviews || 0),
-      lastGoalDate: (localStats.lastGoalDate || '') > (cloudStats.lastGoalDate || '')
-        ? localStats.lastGoalDate : cloudStats.lastGoalDate,
-    };
-  }
+  mergeReviews(l, c) { if(!c?.length) return l||[]; if(!l?.length) return c; const m=new Map(); [...c,...l].forEach(r=>m.set(`${r.cardId}_${r.date}`,r)); return Array.from(m.values()); },
+  mergeStats(l, c) { if(!c) return l||{streak:0,totalReviews:0}; if(!l) return c; return { streak:Math.max(l.streak||0,c.streak||0), totalReviews:Math.max(l.totalReviews||0,c.totalReviews||0), lastGoalDate:(l.lastGoalDate||'')>(c.lastGoalDate||'')?l.lastGoalDate:c.lastGoalDate }; }
 };
 
 const filterActive = (items) => items.filter(item => !item.deleted);
 
-// ============================================
-// CUSTOM LOGO COMPONENT
-// ============================================
 const Logo = ({ size = 32, className = '' }) => (
   <svg width={size} height={size} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
     <defs>
-      <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#F97316" />
-        <stop offset="100%" stopColor="#EAB308" />
-      </linearGradient>
-      <linearGradient id="logoGradientLight" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#FDBA74" />
-        <stop offset="100%" stopColor="#FDE047" />
-      </linearGradient>
+      <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#F97316" /><stop offset="100%" stopColor="#EAB308" /></linearGradient>
+      <linearGradient id="logoGradientLight" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FDBA74" /><stop offset="100%" stopColor="#FDE047" /></linearGradient>
     </defs>
-    <path d="M8 12C8 10.3431 9.34315 9 11 9H22C23.1046 9 24 9.89543 24 11V38C24 38 20 36 15 36C10 36 8 38 8 38V12Z" 
-      fill="url(#logoGradientLight)" stroke="url(#logoGradient)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M40 12C40 10.3431 38.6569 9 37 9H26C24.8954 9 24 11V38C24 38 28 36 33 36C38 36 40 38 40 38V12Z" 
-      fill="url(#logoGradientLight)" stroke="url(#logoGradient)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M8 12C8 10.3431 9.34315 9 11 9H22C23.1046 9 24 9.89543 24 11V38C24 38 20 36 15 36C10 36 8 38 8 38V12Z" fill="url(#logoGradientLight)" stroke="url(#logoGradient)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M40 12C40 10.3431 38.6569 9 37 9H26C24.8954 9 24 11V38C24 38 28 36 33 36C38 36 40 38 40 38V12Z" fill="url(#logoGradientLight)" stroke="url(#logoGradient)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
     <path d="M24 11V38" stroke="url(#logoGradient)" strokeWidth="2" strokeLinecap="round"/>
     <path d="M12 16H20" stroke="url(#logoGradient)" strokeWidth="2" strokeLinecap="round"/>
     <path d="M12 22H18" stroke="url(#logoGradient)" strokeWidth="2" strokeLinecap="round"/>
     <path d="M28 16H36" stroke="url(#logoGradient)" strokeWidth="2" strokeLinecap="round"/>
     <path d="M30 22H36" stroke="url(#logoGradient)" strokeWidth="2" strokeLinecap="round"/>
-    <circle cx="38" cy="8" r="2" fill="#F97316"/>
-    <circle cx="42" cy="12" r="1.5" fill="#EAB308"/>
+    <circle cx="38" cy="8" r="2" fill="#F97316"/><circle cx="42" cy="12" r="1.5" fill="#EAB308"/>
   </svg>
 );
 
-// ============================================
-// AI SERVICE - GEMINI 2.5 FLASH
-// ============================================
 const AIService = {
   async callGemini(prompt, apiKey) {
-    const body = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 2048, responseMimeType: "application/json" }
-    };
+    const body = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 2048, responseMimeType: "application/json" } };
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-      );
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
-        if (response.status === 400) throw new Error('API Key invalid');
-        if (response.status === 403) throw new Error('Quota exceeded');
-        if (response.status === 429) throw new Error('Rate limit - wait and retry');
-        throw new Error(errorMessage);
-      }
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!response.ok) { const e = await response.json().catch(()=>({})); if(response.status===400) throw new Error('API Key invalid'); if(response.status===403) throw new Error('Quota exceeded'); if(response.status===429) throw new Error('Rate limit'); throw new Error(e.error?.message||`HTTP ${response.status}`); }
       const data = await response.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) throw new Error('Empty response');
-      try { 
-        const cleanText = text.replace(/```json\n?|\n?```/g, '');
-        return JSON.parse(cleanText); 
-      } catch {
-        const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-        if (jsonMatch) return JSON.parse(jsonMatch[0]);
-        throw new Error('Invalid JSON');
-      }
+      try { return JSON.parse(text.replace(/```json\n?|\n?```/g, '')); } catch { const m=text.match(/\{[\s\S]*\}|\[[\s\S]*\]/); if(m) return JSON.parse(m[0]); throw new Error('Invalid JSON'); }
     } catch (error) { console.error('AI Error:', error); throw error; }
   },
-  async getAIHelp(word, meaning, apiKey) {
-    return await this.callGemini(`For "${word}" (${meaning}), return JSON: {"example":"sentence","partOfSpeech":"type","memoryTip":"tip","collocations":["phrase1","phrase2"]}`, apiKey);
-  },
-  async generateDeck(topic, count, level, apiKey) {
-    return await this.callGemini(`Generate ${count} TOEIC words about "${topic}" at ${level} level. Return JSON: {"words":[{"front":"word","back":"คำแปลไทย","phonetic":"/phonetic/","example":"sentence"}]}`, apiKey);
-  },
-  async checkSentence(word, sentence, apiKey) {
-    return await this.callGemini(`Check sentence using "${word}": "${sentence}". Return JSON: {"grammarCorrect":true,"grammarNote":"Thai","contextCorrect":true,"contextNote":"Thai","correctedSentence":"corrected","suggestion":"Thai tips","score":1}`, apiKey);
-  }
+  async getAIHelp(word, meaning, apiKey) { return await this.callGemini(`For "${word}" (${meaning}), return JSON: {"example":"sentence","partOfSpeech":"type","memoryTip":"tip","collocations":["phrase1","phrase2"]}`, apiKey); },
+  async generateDeck(topic, count, level, apiKey) { return await this.callGemini(`Generate ${count} TOEIC words about "${topic}" at ${level} level. Return JSON: {"words":[{"front":"word","back":"คำแปลไทย","phonetic":"/phonetic/","example":"sentence"}]}`, apiKey); },
+  async checkSentence(word, sentence, apiKey) { return await this.callGemini(`Check sentence using "${word}": "${sentence}". Return JSON: {"grammarCorrect":true,"grammarNote":"Thai","contextCorrect":true,"contextNote":"Thai","correctedSentence":"corrected","suggestion":"Thai tips","score":1}`, apiKey); }
 };
 
-// ============================================
-// ICON COMPONENT
-// ============================================
 const Icon = ({ name, size = 24, className = '', fill = 'none' }) => {
   const ref = useRef(null);
   useEffect(() => {
@@ -401,71 +317,25 @@ const Icon = ({ name, size = 24, className = '', fill = 'none' }) => {
       svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', fill);
       svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
       svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
-      if (Array.isArray(iconData)) {
-        const children = Array.isArray(iconData[2]) ? iconData[2] : [];
-        children.forEach(([tag, attrs]) => {
-          const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-          Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
-          svg.appendChild(el);
-        });
-      }
+      if (Array.isArray(iconData)) { const children = Array.isArray(iconData[2]) ? iconData[2] : []; children.forEach(([tag, attrs]) => { const el = document.createElementNS('http://www.w3.org/2000/svg', tag); Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v)); svg.appendChild(el); }); }
       ref.current.appendChild(svg);
     }
   }, [name, size, fill]);
   return <span ref={ref} className={`inline-flex items-center justify-center ${className}`} />;
 };
 
-// ============================================
-// CLOUD SYNC SERVICE
-// ============================================
 const CloudSync = {
   db: null, auth: null, userId: null, customKey: null, initialized: false, activeListener: null,
-  init(config) {
-    if (this.initialized) return Promise.resolve(true);
-    try {
-      if (!firebase.apps.length) firebase.initializeApp(config);
-      this.db = firebase.database(); this.auth = firebase.auth();
-      this.initialized = true;
-      this.customKey = localStorage.getItem('vocab_sync_key');
-      return this.signIn();
-    } catch (e) { console.error('Firebase init error:', e); return Promise.resolve(false); }
-  },
-  async signIn() {
-    try { const res = await this.auth.signInAnonymously(); this.userId = res.user.uid; return true; }
-    catch (e) { console.error('Auth error:', e); return false; }
-  },
-  setSyncKey(key) {
-    this.cleanupListener();
-    const cleanKey = key ? key.trim().replace(/[.#$\/\[\]]/g, '_') : null;
-    this.customKey = cleanKey;
-    if (cleanKey) localStorage.setItem('vocab_sync_key', cleanKey);
-    else localStorage.removeItem('vocab_sync_key');
-  },
-  getUserPath() { const pathId = this.customKey || this.userId; return pathId ? `users/${pathId}` : null; },
+  init(config) { if (this.initialized) return Promise.resolve(true); try { if (!firebase.apps.length) firebase.initializeApp(config); this.db = firebase.database(); this.auth = firebase.auth(); this.initialized = true; this.customKey = localStorage.getItem('vocab_sync_key'); return this.signIn(); } catch (e) { return Promise.resolve(false); } },
+  async signIn() { try { const res = await this.auth.signInAnonymously(); this.userId = res.user.uid; return true; } catch (e) { return false; } },
+  setSyncKey(key) { this.cleanupListener(); const ck = key ? key.trim().replace(/[.#$\/\[\]]/g, '_') : null; this.customKey = ck; if (ck) localStorage.setItem('vocab_sync_key', ck); else localStorage.removeItem('vocab_sync_key'); },
+  getUserPath() { const p = this.customKey || this.userId; return p ? `users/${p}` : null; },
   getCurrentId() { return this.customKey || this.userId; },
-  async saveToCloud(data, onError) {
-    const path = this.getUserPath();
-    if (!this.initialized || !path) return;
-    try { await this.db.ref(path).set({ ...data, lastSync: Date.now() }); console.log('[Cloud] ✅ Saved'); }
-    catch(e) { console.error("Save failed:", e); if(e.code === 'PERMISSION_DENIED' && onError) onError('Permission Denied'); }
-  },
+  async saveToCloud(data, onError) { const path = this.getUserPath(); if (!this.initialized || !path) return; try { await this.db.ref(path).set({ ...data, lastSync: Date.now() }); } catch(e) { if(e.code === 'PERMISSION_DENIED' && onError) onError('Permission Denied'); } },
   cleanupListener() { if (this.activeListener) { this.activeListener.off(); this.activeListener = null; } },
-  onDataChange(cb, onError) {
-    const path = this.getUserPath();
-    if (!this.initialized || !path) return () => {};
-    this.cleanupListener();
-    const ref = this.db.ref(path);
-    this.activeListener = ref;
-    const handler = (snapshot) => { if (snapshot.exists()) cb(snapshot.val()); else cb(null); };
-    const errorHandler = (err) => { if(err.code === 'PERMISSION_DENIED' && onError) onError('Permission Denied'); };
-    ref.on('value', handler, errorHandler);
-    return () => { ref.off('value', handler); this.activeListener = null; };
-  },
+  onDataChange(cb, onError) { const path = this.getUserPath(); if (!this.initialized || !path) return () => {}; this.cleanupListener(); const ref = this.db.ref(path); this.activeListener = ref; ref.on('value', s => { if (s.exists()) cb(s.val()); else cb(null); }, err => { if(err.code === 'PERMISSION_DENIED' && onError) onError('Permission Denied'); }); return () => { ref.off(); this.activeListener = null; }; },
 };
 
-// ============================================
-// LOCAL DATABASE
-// ============================================
 const DB = {
   get: (k, def) => { try { return JSON.parse(localStorage.getItem(`vocab_${k}`)) || def; } catch { return def; } },
   set: (k, v) => localStorage.setItem(`vocab_${k}`, JSON.stringify(v)),
@@ -473,242 +343,89 @@ const DB = {
   setApiKey: (k) => localStorage.setItem('vocab_api_key', k),
 };
 
-// ============================================
-// UTILITIES
-// ============================================
-const speak = (text) => {
-  if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'en-US'; u.rate = 0.9;
-  window.speechSynthesis.speak(u);
-};
+const speak = (text) => { if (!window.speechSynthesis) return; window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; u.rate = 0.9; window.speechSynthesis.speak(u); };
+const parseCSV = (txt) => txt.trim().split('\n').map(l => { const p = l.split(','); if(p.length < 2) return null; return { front: p[0].trim(), back: p[1].trim(), phonetic: p[2]?.trim()||'', example: p[3]?.trim()||'' }; }).filter(x => x);
+const exportToCSV = (cards, deckTitle) => { const h = 'word,meaning,phonetic,example\n'; const r = cards.map(c => `"${c.front}","${c.back}","${c.phonetic || ''}","${c.example || ''}"`).join('\n'); const b = new Blob([h + r], { type: 'text/csv;charset=utf-8;' }); const u = URL.createObjectURL(b); const l = document.createElement('a'); l.href = u; l.download = `${deckTitle.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`; l.click(); URL.revokeObjectURL(u); };
 
-const parseCSV = (txt) => {
-  return txt.trim().split('\n').map(l => {
-    const p = l.split(','); 
-    if(p.length < 2) return null;
-    return { front: p[0].trim(), back: p[1].trim(), phonetic: p[2]?.trim()||'', example: p[3]?.trim()||'' };
-  }).filter(x => x);
-};
-
-const exportToCSV = (cards, deckTitle) => {
-  const header = 'word,meaning,phonetic,example\n';
-  const rows = cards.map(c => `"${c.front}","${c.back}","${c.phonetic || ''}","${c.example || ''}"`).join('\n');
-  const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a'); link.href = url;
-  link.download = `${deckTitle.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
-  link.click(); URL.revokeObjectURL(url);
-};
-
-// ============================================
-// SRS ALGORITHM (FIXED)
-// ============================================
 const SRS = {
-  init() {
-    return {
-      repetitions: 0, intervalIndex: 0, easeFactor: CONFIG.DEFAULT_EASE,
-      nextReviewAt: new Date().toISOString(),
-      lastModified: Date.now()
-    };
-  },
+  init() { return { repetitions: 0, intervalIndex: 0, easeFactor: CONFIG.DEFAULT_EASE, nextReviewAt: new Date().toISOString(), lastModified: Date.now() }; },
   calculate(card, q) {
     let { repetitions = 0, intervalIndex = 0, easeFactor = 2.5 } = card;
-    if (q === 0) { repetitions = 0; intervalIndex = 0; }
-    else {
-      repetitions++;
-      if (q === 1) { /* Hard: Keep interval */ }
-      else if (q === 2) { intervalIndex = Math.min(intervalIndex + 1, CONFIG.INTERVALS.length - 1); }
-      else if (q === 3) { intervalIndex = Math.min(intervalIndex + 2, CONFIG.INTERVALS.length - 1); }
-    }
-    const eq = q + 2;
-    easeFactor = Math.max(1.3, easeFactor + (0.1 - (5 - eq) * (0.08 + (5 - eq) * 0.02)));
-    const nextDate = new Date();
-    nextDate.setDate(nextDate.getDate() + CONFIG.INTERVALS[intervalIndex]);
-    return { repetitions, intervalIndex, easeFactor, nextReviewAt: nextDate.toISOString(), lastModified: Date.now() };
+    if (q === 0) { repetitions = 0; intervalIndex = 0; } else { repetitions++; if (q === 2) intervalIndex = Math.min(intervalIndex + 1, 4); else if (q === 3) intervalIndex = Math.min(intervalIndex + 2, 4); }
+    const eq = q + 2; easeFactor = Math.max(1.3, easeFactor + (0.1 - (5 - eq) * (0.08 + (5 - eq) * 0.02)));
+    const d = new Date(); d.setDate(d.getDate() + CONFIG.INTERVALS[intervalIndex]);
+    return { repetitions, intervalIndex, easeFactor, nextReviewAt: d.toISOString(), lastModified: Date.now() };
   },
   isDue: (c) => !c.deleted && (!c.nextReviewAt || new Date(c.nextReviewAt) <= new Date())
 };
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 const DECK_COLORS = ['primary', 'mint', 'lavender', 'sky'];
-const getColorClasses = (color) => {
-  const colors = {
-    primary: { bg: 'bg-orange-50', text: 'text-primary', dot: 'bg-primary' },
-    mint: { bg: 'bg-emerald-50', text: 'text-mint', dot: 'bg-mint' },
-    lavender: { bg: 'bg-violet-50', text: 'text-lavender', dot: 'bg-lavender' },
-    sky: { bg: 'bg-sky-50', text: 'text-sky', dot: 'bg-sky' },
-  };
-  return colors[color] || colors.primary;
-};
+const getColorClasses = (color) => ({ primary: { bg: 'bg-orange-50', text: 'text-primary', dot: 'bg-primary' }, mint: { bg: 'bg-emerald-50', text: 'text-mint', dot: 'bg-mint' }, lavender: { bg: 'bg-violet-50', text: 'text-lavender', dot: 'bg-lavender' }, sky: { bg: 'bg-sky-50', text: 'text-sky', dot: 'bg-sky' } }[color] || { bg: 'bg-orange-50', text: 'text-primary', dot: 'bg-primary' });
 
-// ============================================
-// COMPONENTS
-// ============================================
+// Components
 const ConfirmDialog = ({ isOpen, title, message, onConfirm, onCancel, type = 'danger' }) => {
   if (!isOpen) return null;
-  const colors = {
-    danger: { btn: 'bg-coral hover:bg-red-600 text-white', icon: 'trash-2', iconBg: 'bg-red-100', iconColor: 'text-coral' },
-    warning: { btn: 'bg-gold hover:bg-amber-600 text-white', icon: 'alert-triangle', iconBg: 'bg-amber-100', iconColor: 'text-gold' },
-  };
+  const colors = { danger: { btn: 'bg-coral hover:bg-red-600 text-white', icon: 'trash-2', iconBg: 'bg-red-100', iconColor: 'text-coral' }, warning: { btn: 'bg-gold hover:bg-amber-600 text-white', icon: 'alert-triangle', iconBg: 'bg-amber-100', iconColor: 'text-gold' } };
   return (
     <div className="fixed inset-0 z-[60] modal-backdrop flex items-center justify-center p-4" onClick={onCancel}>
       <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-elevated animate-scale-in" onClick={e => e.stopPropagation()}>
-        <div className={`w-16 h-16 rounded-2xl ${colors[type].iconBg} flex items-center justify-center mx-auto mb-4`}>
-          <Icon name={colors[type].icon} size={28} className={colors[type].iconColor} />
-        </div>
+        <div className={`w-16 h-16 rounded-2xl ${colors[type].iconBg} flex items-center justify-center mx-auto mb-4`}><Icon name={colors[type].icon} size={28} className={colors[type].iconColor} /></div>
         <h3 className="text-xl font-bold text-heading text-center mb-2">{title}</h3>
         <p className="text-body text-center mb-6">{message}</p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 btn-secondary py-3 rounded-xl">Cancel</button>
-          <button onClick={onConfirm} className={`flex-1 ${colors[type].btn} py-3 rounded-xl font-semibold`}>Confirm</button>
-        </div>
+        <div className="flex gap-3"><button onClick={onCancel} className="flex-1 btn-secondary py-3 rounded-xl">Cancel</button><button onClick={onConfirm} className={`flex-1 ${colors[type].btn} py-3 rounded-xl font-semibold`}>Confirm</button></div>
       </div>
     </div>
   );
 };
 
-const OfflineIndicator = ({ isOffline }) => {
-  if (!isOffline) return null;
-  return (
-    <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
-      <div className="bg-coral text-white px-4 py-2 rounded-full flex items-center gap-2 text-sm font-semibold shadow-lg">
-        <Icon name="wifi-off" size={16} /> Offline Mode
-      </div>
-    </div>
-  );
-};
+const OfflineIndicator = ({ isOffline }) => { if (!isOffline) return null; return (<div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-slide-up"><div className="bg-coral text-white px-4 py-2 rounded-full flex items-center gap-2 text-sm font-semibold shadow-lg"><Icon name="wifi-off" size={16} /> Offline Mode</div></div>); };
 
-const SearchBar = ({ value, onChange, placeholder }) => (
-  <div className="relative">
-    <Icon name="search" size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
-    <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      className="w-full input-clean pl-12 pr-10 py-3 rounded-xl text-heading placeholder-muted" />
-    {value && <button onClick={() => onChange('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-body"><Icon name="x" size={18} /></button>}
-  </div>
-);
+const SearchBar = ({ value, onChange, placeholder }) => (<div className="relative"><Icon name="search" size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" /><input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full input-clean pl-12 pr-10 py-3 rounded-xl text-heading placeholder-muted" />{value && <button onClick={() => onChange('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-body"><Icon name="x" size={18} /></button>}</div>);
 
 const CircularProgress = ({ value, max, size = 80 }) => {
-  const radius = (size - 8) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const progress = Math.min(value / max, 1);
-  const offset = circumference - (progress * circumference);
-  return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg className="w-full h-full transform -rotate-90">
-        <circle cx={size/2} cy={size/2} r={radius} stroke="#F1F5F9" strokeWidth="8" fill="none"/>
-        <circle cx={size/2} cy={size/2} r={radius} stroke="url(#progressGradient)" strokeWidth="8" fill="none"
-          strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="transition-all duration-1000 ease-out"/>
-        <defs><linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#F97316" /><stop offset="100%" stopColor="#EAB308" />
-        </linearGradient></defs>
-      </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-xl font-bold text-heading">{value}<span className="text-sm text-muted">/{max}</span></span>
-      </div>
-    </div>
-  );
+  const radius = (size - 8) / 2; const circumference = 2 * Math.PI * radius; const progress = Math.min(value / max, 1); const offset = circumference - (progress * circumference);
+  return (<div className="relative" style={{ width: size, height: size }}><svg className="w-full h-full transform -rotate-90"><circle cx={size/2} cy={size/2} r={radius} stroke="#F1F5F9" strokeWidth="8" fill="none"/><circle cx={size/2} cy={size/2} r={radius} stroke="url(#progressGradient)" strokeWidth="8" fill="none" strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="transition-all duration-1000 ease-out"/><defs><linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#F97316" /><stop offset="100%" stopColor="#EAB308" /></linearGradient></defs></svg><div className="absolute inset-0 flex items-center justify-center"><span className="text-xl font-bold text-heading">{value}<span className="text-sm text-muted">/{max}</span></span></div></div>);
 };
 
 const SentenceCheckPanel = ({ word, apiKey, onClose }) => {
-  const [sentence, setSentence] = useState('');
-  const [checking, setChecking] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
-  const handleCheck = async () => {
-    if (!sentence.trim() || !apiKey) return;
-    setChecking(true); setError(''); setResult(null);
-    try { setResult(await AIService.checkSentence(word, sentence, apiKey)); }
-    catch (err) { setError(err.message); }
-    setChecking(false);
-  };
+  const [sentence, setSentence] = useState(''); const [checking, setChecking] = useState(false); const [result, setResult] = useState(null); const [error, setError] = useState('');
+  const handleCheck = async () => { if (!sentence.trim() || !apiKey) return; setChecking(true); setError(''); setResult(null); try { setResult(await AIService.checkSentence(word, sentence, apiKey)); } catch (err) { setError(err.message); } setChecking(false); };
   return (
     <div className="bg-violet-50 rounded-2xl p-4 border border-violet-100 mt-4 animate-fade-in">
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="font-semibold text-lavender flex items-center gap-2"><Icon name="pen-tool" size={18} /> Practice Writing</h4>
-        <button onClick={onClose} className="text-muted hover:text-body"><Icon name="x" size={18} /></button>
-      </div>
+      <div className="flex items-center justify-between mb-3"><h4 className="font-semibold text-lavender flex items-center gap-2"><Icon name="pen-tool" size={18} /> Practice Writing</h4><button onClick={onClose} className="text-muted hover:text-body"><Icon name="x" size={18} /></button></div>
       <p className="text-sm text-body mb-3">ลองแต่งประโยคโดยใช้คำว่า "<span className="font-semibold text-lavender">{word}</span>"</p>
-      <textarea value={sentence} onChange={e => setSentence(e.target.value)} placeholder={`Type a sentence using "${word}"...`}
-        className="w-full input-clean p-3 rounded-xl text-heading text-sm resize-none h-20 mb-3" />
-      <button onClick={handleCheck} disabled={checking || !sentence.trim()}
-        className="w-full btn-ai py-2.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
-        {checking ? <><Icon name="loader-2" size={18} className="animate-spin" /> Checking...</> : <><Icon name="sparkles" size={18} /> Check with AI</>}
-      </button>
+      <textarea value={sentence} onChange={e => setSentence(e.target.value)} placeholder={`Type a sentence using "${word}"...`} className="w-full input-clean p-3 rounded-xl text-heading text-sm resize-none h-20 mb-3" />
+      <button onClick={handleCheck} disabled={checking || !sentence.trim()} className="w-full btn-ai py-2.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">{checking ? <><Icon name="loader-2" size={18} className="animate-spin" /> Checking...</> : <><Icon name="sparkles" size={18} /> Check with AI</>}</button>
       {error && <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl"><p className="text-sm text-coral">{error}</p></div>}
       {result && (
         <div className="mt-4 space-y-3 animate-fade-in">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-body">Score</span>
-            <div className="flex gap-1">{[1,2,3,4,5].map(i => <Icon key={i} name="star" size={18} fill={i <= result.score ? '#F59E0B' : 'none'} className={i <= result.score ? 'text-gold' : 'text-slate-300'} />)}</div>
-          </div>
-          <div className={`p-3 rounded-xl ${result.grammarCorrect ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
-            <div className="flex items-center gap-2 mb-1"><Icon name={result.grammarCorrect ? 'check-circle' : 'x-circle'} size={16} className={result.grammarCorrect ? 'text-mint' : 'text-coral'} /><span className="text-sm font-medium">Grammar</span></div>
-            <p className="text-sm text-body">{result.grammarNote}</p>
-          </div>
-          <div className={`p-3 rounded-xl ${result.contextCorrect ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
-            <div className="flex items-center gap-2 mb-1"><Icon name={result.contextCorrect ? 'check-circle' : 'alert-circle'} size={16} className={result.contextCorrect ? 'text-mint' : 'text-gold'} /><span className="text-sm font-medium">Context</span></div>
-            <p className="text-sm text-body">{result.contextNote}</p>
-          </div>
-          {result.correctedSentence && result.correctedSentence !== sentence && (
-            <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl">
-              <p className="text-xs text-sky font-medium mb-1">✨ Suggested</p>
-              <p className="text-sm text-heading italic">"{result.correctedSentence}"</p>
-            </div>
-          )}
-          {result.suggestion && (
-            <div className="p-3 bg-violet-50 border border-violet-200 rounded-xl">
-              <p className="text-xs text-lavender font-medium mb-1">💡 Tips</p>
-              <p className="text-sm text-body">{result.suggestion}</p>
-            </div>
-          )}
+          <div className="flex items-center justify-between"><span className="text-sm font-medium text-body">Score</span><div className="flex gap-1">{[1,2,3,4,5].map(i => <Icon key={i} name="star" size={18} fill={i <= result.score ? '#F59E0B' : 'none'} className={i <= result.score ? 'text-gold' : 'text-slate-300'} />)}</div></div>
+          <div className={`p-3 rounded-xl ${result.grammarCorrect ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}><div className="flex items-center gap-2 mb-1"><Icon name={result.grammarCorrect ? 'check-circle' : 'x-circle'} size={16} className={result.grammarCorrect ? 'text-mint' : 'text-coral'} /><span className="text-sm font-medium">Grammar</span></div><p className="text-sm text-body">{result.grammarNote}</p></div>
+          <div className={`p-3 rounded-xl ${result.contextCorrect ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}><div className="flex items-center gap-2 mb-1"><Icon name={result.contextCorrect ? 'check-circle' : 'alert-circle'} size={16} className={result.contextCorrect ? 'text-mint' : 'text-gold'} /><span className="text-sm font-medium">Context</span></div><p className="text-sm text-body">{result.contextNote}</p></div>
+          {result.correctedSentence && result.correctedSentence !== sentence && (<div className="p-3 bg-sky-50 border border-sky-200 rounded-xl"><p className="text-xs text-sky font-medium mb-1">✨ Suggested</p><p className="text-sm text-heading italic">"{result.correctedSentence}"</p></div>)}
+          {result.suggestion && (<div className="p-3 bg-violet-50 border border-violet-200 rounded-xl"><p className="text-xs text-lavender font-medium mb-1">💡 Tips</p><p className="text-sm text-body">{result.suggestion}</p></div>)}
         </div>
       )}
     </div>
   );
 };
 
-// ============================================
-// 🔥 NEW COMPONENT: FOCUS GATE (ขั้นตอนที่ 1)
-// ============================================
+// 🔥 FOCUS GATE (Session-Based)
 const FocusGate = ({ required, current, onStart }) => {
   const progress = Math.min((current / required) * 100, 100);
-  
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-6 text-center animate-fade-in" style={{background: 'rgba(255,255,255,0.98)', backdropFilter: 'blur(10px)'}}>
-      <div className="absolute top-0 w-full h-1 bg-slate-100">
-        <div className="h-full bg-gradient-to-r from-primary to-gold transition-all duration-1000" style={{ width: `${progress}%` }}></div>
-      </div>
-      
-      <div className="animate-float mb-8">
-        <Logo size={80} />
-      </div>
-
+      <div className="absolute top-0 w-full h-1 bg-slate-100"><div className="h-full bg-gradient-to-r from-primary to-gold transition-all duration-1000" style={{ width: `${progress}%` }}></div></div>
+      <div className="animate-float mb-8"><Logo size={80} /></div>
       <h1 className="text-3xl font-extrabold text-heading mb-2">Focus Checkpoint</h1>
-      <p className="text-muted text-sm mb-6 uppercase tracking-wider font-bold">
-        Session Lock Active
-      </p>
-
+      <p className="text-muted text-sm mb-6 uppercase tracking-wider font-bold">Session Lock Active</p>
       <div className="bg-white p-6 rounded-3xl shadow-elevated w-full max-w-sm mb-8 border border-slate-100">
-        <p className="text-body mb-4">
-          ทบทวนศัพท์ <strong className="text-primary">{required}</strong> คำ เพื่อปลดล็อกแอปในรอบนี้
-        </p>
-        
-        <div className="flex justify-between items-end mb-2">
-          <span className="text-4xl font-bold text-heading">{current}</span>
-          <span className="text-lg text-muted font-medium mb-1">/ {required}</span>
-        </div>
-        
-        <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-primary to-gold rounded-full transition-all duration-500"
-            style={{ width: `${progress}%` }}></div>
-        </div>
+        <p className="text-body mb-4">ทบทวนศัพท์ <strong className="text-primary">{required}</strong> คำ เพื่อปลดล็อกแอปในรอบนี้</p>
+        <div className="flex justify-between items-end mb-2"><span className="text-4xl font-bold text-heading">{current}</span><span className="text-lg text-muted font-medium mb-1">/ {required}</span></div>
+        <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-primary to-gold rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div></div>
       </div>
-
-      <button onClick={onStart} className="w-full max-w-sm btn-primary py-4 rounded-2xl text-xl flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform transition-all hover:-translate-y-1">
-        <Icon name="play" size={24} fill="currentColor" /> เริ่มเรียนทันที
-      </button>
+      <button onClick={onStart} className="w-full max-w-sm btn-primary py-4 rounded-2xl text-xl flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform transition-all hover:-translate-y-1"><Icon name="play" size={24} fill="currentColor" /> เริ่มเรียนทันที</button>
     </div>
   );
 };
@@ -722,7 +439,6 @@ function App() {
   const [cards, setCards] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [stats, setStats] = useState({ streak: 0, totalReviews: 0 });
-   
   const [apiKey, setApiKey] = useState('');
   const [cloudEnabled, setCloudEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -730,29 +446,15 @@ function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 🔥 SESSION STATE (Resets on every page refresh - not stored)
+  // 🔥 SESSION STATE (Resets on every page refresh)
   const [sessionCount, setSessionCount] = useState(0);
+  const [focusSettings, setFocusSettings] = useState(DB.get('focus_settings', { enabled: false, cardsPerVisit: 3 }));
+  useEffect(() => { DB.set('focus_settings', focusSettings); }, [focusSettings]);
 
-  // 🔥 FOCUS SETTINGS (Stored in localStorage)
-  const [focusSettings, setFocusSettings] = useState(DB.get('focus_settings', { 
-    enabled: false, 
-    cardsPerVisit: 3 
-  }));
-
-  // 🔥 บันทึกเมื่อตั้งค่าเปลี่ยน
-  useEffect(() => {
-    DB.set('focus_settings', focusSettings);
-  }, [focusSettings]);
-   
   const syncTimer = useRef(null);
   const lastSaveTime = useRef(0);
   const SYNC_LOCK_DURATION = 5000;
-
-  const cardsRef = useRef(cards);
-  const decksRef = useRef(decks);
-  const reviewsRef = useRef(reviews);
-  const statsRef = useRef(stats);
-
+  const cardsRef = useRef(cards); const decksRef = useRef(decks); const reviewsRef = useRef(reviews); const statsRef = useRef(stats);
   useEffect(() => { cardsRef.current = cards; }, [cards]);
   useEffect(() => { decksRef.current = decks; }, [decks]);
   useEffect(() => { reviewsRef.current = reviews; }, [reviews]);
@@ -766,12 +468,10 @@ function App() {
   const [aiData, setAiData] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showPractice, setShowPractice] = useState(false);
-
   const [modals, setModals] = useState({ addDeck: false, addCard: false, import: false, settings: false, editCard: false, generateDeck: false });
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false });
   const [editingCard, setEditingCard] = useState(null);
   const [toast, setToast] = useState(null);
-   
   const [genTopic, setGenTopic] = useState('');
   const [genCount, setGenCount] = useState(10);
   const [genLevel, setGenLevel] = useState('Intermediate');
@@ -779,157 +479,60 @@ function App() {
 
   const notify = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 4000); };
 
-  useEffect(() => {
-    const handleOnline = () => { setIsOffline(false); notify('Back online!'); };
-    const handleOffline = () => { setIsOffline(true); notify('You are offline', 'warning'); };
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); };
-  }, []);
+  useEffect(() => { const on = () => { setIsOffline(false); notify('Back online!'); }; const off = () => { setIsOffline(true); notify('You are offline', 'warning'); }; window.addEventListener('online', on); window.addEventListener('offline', off); return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); }; }, []);
 
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
-      const localDecks = DB.get('decks', []);
-      const localCards = DB.get('cards', []);
-      if (localDecks.length === 0) {
-        const starterCards = STARTER_CARDS.map(c => ({ ...c, id: generateId(), deckId: STARTER_DECK.id, ...SRS.init() }));
-        setDecks([STARTER_DECK]);
-        setCards(starterCards);
-      } else {
-        setDecks(localDecks.map(d => ({ ...d, lastModified: d.lastModified || Date.now() })));
-        setCards(localCards.map(c => ({ ...c, lastModified: c.lastModified || Date.now() })));
-      }
-      setReviews(DB.get('reviews', []));
-      setStats(DB.get('stats', { streak: 0, totalReviews: 0 }));
-      setApiKey(DB.getApiKey());
-      if (navigator.onLine) await initCloud(FIREBASE_CONFIG);
+      const ld = DB.get('decks', []); const lc = DB.get('cards', []);
+      if (ld.length === 0) { setDecks([STARTER_DECK]); setCards(STARTER_CARDS.map(c => ({ ...c, id: generateId(), deckId: STARTER_DECK.id, ...SRS.init() }))); }
+      else { setDecks(ld.map(d => ({ ...d, lastModified: d.lastModified || Date.now() }))); setCards(lc.map(c => ({ ...c, lastModified: c.lastModified || Date.now() }))); }
+      setReviews(DB.get('reviews', [])); setStats(DB.get('stats', { streak: 0, totalReviews: 0 })); setApiKey(DB.getApiKey());
+      if (navigator.onLine) { if (await CloudSync.init(FIREBASE_CONFIG)) { setCloudEnabled(true); setCurrentSyncKey(CloudSync.getCurrentId() || ''); } }
       setTimeout(() => setIsLoading(false), 600);
     };
     loadData();
   }, []);
 
-  const initCloud = async (cfg) => {
-    if (await CloudSync.init(cfg)) {
-      setCloudEnabled(true);
-      setCurrentSyncKey(CloudSync.getCurrentId() || '');
-    }
-  };
-
   const unsubscribeRef = useRef(null);
   useEffect(() => {
     if (unsubscribeRef.current) { unsubscribeRef.current(); unsubscribeRef.current = null; }
     if (!cloudEnabled || isOffline) return;
-    const timeoutId = setTimeout(() => {
+    const tid = setTimeout(() => {
       setSyncing(true);
       unsubscribeRef.current = CloudSync.onDataChange(
-        (cloudData) => {
-          const timeSinceLastSave = Date.now() - lastSaveTime.current;
-          if (timeSinceLastSave < SYNC_LOCK_DURATION) { console.log(`[Sync] Ignoring (lock: ${timeSinceLastSave}ms)`); setSyncing(false); return; }
-          if (!cloudData) { console.log('[Sync] No cloud data'); setSyncing(false); return; }
-          console.log('[Sync] 🔄 Merging...');
-          const mergedCards = SmartMerge.mergeCards(cardsRef.current, cloudData.cards);
-          const mergedDecks = SmartMerge.mergeDecks(decksRef.current, cloudData.decks);
-          const mergedReviews = SmartMerge.mergeReviews(reviewsRef.current, cloudData.reviews);
-          const mergedStats = SmartMerge.mergeStats(statsRef.current, cloudData.stats);
-          setCards(mergedCards); setDecks(mergedDecks); setReviews(mergedReviews); setStats(mergedStats);
-          DB.set('cards', mergedCards); DB.set('decks', mergedDecks); DB.set('reviews', mergedReviews); DB.set('stats', mergedStats);
-          console.log('[Sync] ✅ Done');
+        (cd) => {
+          if (Date.now() - lastSaveTime.current < SYNC_LOCK_DURATION) { setSyncing(false); return; }
+          if (!cd) { setSyncing(false); return; }
+          const mc = SmartMerge.mergeCards(cardsRef.current, cd.cards); const md = SmartMerge.mergeDecks(decksRef.current, cd.decks);
+          const mr = SmartMerge.mergeReviews(reviewsRef.current, cd.reviews); const ms = SmartMerge.mergeStats(statsRef.current, cd.stats);
+          setCards(mc); setDecks(md); setReviews(mr); setStats(ms);
+          DB.set('cards', mc); DB.set('decks', md); DB.set('reviews', mr); DB.set('stats', ms);
           setSyncing(false);
         },
         (err) => { setSyncing(false); notify(err, 'error'); }
       );
     }, 100);
-    return () => { clearTimeout(timeoutId); if (unsubscribeRef.current) unsubscribeRef.current(); };
+    return () => { clearTimeout(tid); if (unsubscribeRef.current) unsubscribeRef.current(); };
   }, [cloudEnabled, currentSyncKey, isOffline]);
 
   const saveData = useCallback(() => {
     DB.set('decks', decks); DB.set('cards', cards); DB.set('reviews', reviews); DB.set('stats', stats);
-    if (cloudEnabled && !isOffline) {
-      clearTimeout(syncTimer.current);
-      syncTimer.current = setTimeout(() => {
-        lastSaveTime.current = Date.now();
-        console.log('[Save] 💾 Saving...');
-        CloudSync.saveToCloud({ decks, cards, reviews, stats }, (err) => notify(err, 'error'));
-      }, 1500);
-    }
+    if (cloudEnabled && !isOffline) { clearTimeout(syncTimer.current); syncTimer.current = setTimeout(() => { lastSaveTime.current = Date.now(); CloudSync.saveToCloud({ decks, cards, reviews, stats }, (err) => notify(err, 'error')); }, 1500); }
   }, [decks, cards, reviews, stats, cloudEnabled, isOffline]);
 
   useEffect(() => { if (!isLoading) saveData(); }, [decks, cards, reviews, stats, isLoading]);
-
-  useEffect(() => {
-    document.body.classList.toggle('modal-open', Object.values(modals).some(v => v) || confirmDialog.isOpen);
-  }, [modals, confirmDialog]);
-
+  useEffect(() => { document.body.classList.toggle('modal-open', Object.values(modals).some(v => v) || confirmDialog.isOpen); }, [modals, confirmDialog]);
   const toggleModal = (n, v) => setModals(prev => ({ ...prev, [n]: v }));
 
-  // ============================================
-  // ACTIONS - with Soft Delete
-  // ============================================
-   
-  const createDeck = (title) => {
-    const color = DECK_COLORS[decks.length % DECK_COLORS.length];
-    setDecks([...decks, { id: generateId(), title, createdAt: new Date().toISOString(), color, lastModified: Date.now() }]);
-    toggleModal('addDeck', false);
-    notify('Deck created! 🎉');
-  };
-
-  const deleteDeck = (deckId) => {
-    setConfirmDialog({
-      isOpen: true, type: 'danger', title: 'Delete Deck?',
-      message: 'This will permanently delete the deck and all its cards.',
-      onConfirm: () => {
-        const now = Date.now();
-        setDecks(decks.map(d => d.id === deckId ? { ...d, deleted: true, deletedAt: now, lastModified: now } : d));
-        setCards(cards.map(c => c.deckId === deckId ? { ...c, deleted: true, deletedAt: now, lastModified: now } : c));
-        setConfirmDialog({ isOpen: false });
-        setView('library');
-        notify('Deck deleted');
-      }
-    });
-  };
-
-  const addCard = (data) => {
-    setCards([...cards, { id: generateId(), deckId: selDeck.id, ...data, ...SRS.init() }]);
-    toggleModal('addCard', false);
-    notify('Card added! ✨');
-  };
-
-  const updateCard = (id, data) => {
-    setCards(cards.map(c => c.id === id ? { ...c, ...data, lastModified: Date.now() } : c));
-    toggleModal('editCard', false);
-    setEditingCard(null);
-    notify('Card updated');
-  };
-
-  const deleteCard = (id) => {
-    setConfirmDialog({
-      isOpen: true, type: 'danger', title: 'Delete Card?',
-      message: 'This card will be permanently removed.',
-      onConfirm: () => {
-        const now = Date.now();
-        setCards(cards.map(c => c.id === id ? { ...c, deleted: true, deletedAt: now, lastModified: now } : c));
-        setConfirmDialog({ isOpen: false });
-        notify('Card deleted');
-      }
-    });
-  };
-
-  const importCSV = (txt) => {
-    const newCards = parseCSV(txt).map(c => ({ id: generateId(), deckId: selDeck.id, ...c, ...SRS.init() }));
-    if (newCards.length) {
-      setCards([...cards, ...newCards]);
-      toggleModal('import', false);
-      notify(`Imported ${newCards.length} cards! 📚`);
-    } else notify('No valid cards found', 'error');
-  };
-
-  const handleExport = () => {
-    const deckCards = filterActive(cards.filter(c => c.deckId === selDeck.id));
-    if (deckCards.length === 0) { notify('No cards to export', 'warning'); return; }
-    exportToCSV(deckCards, selDeck.title);
-    notify('Exported! 📤');
-  };
+  // Actions
+  const createDeck = (title) => { setDecks([...decks, { id: generateId(), title, createdAt: new Date().toISOString(), color: DECK_COLORS[decks.length % 4], lastModified: Date.now() }]); toggleModal('addDeck', false); notify('Deck created! 🎉'); };
+  const deleteDeck = (deckId) => { setConfirmDialog({ isOpen: true, type: 'danger', title: 'Delete Deck?', message: 'This will permanently delete the deck and all its cards.', onConfirm: () => { const now = Date.now(); setDecks(decks.map(d => d.id === deckId ? { ...d, deleted: true, deletedAt: now, lastModified: now } : d)); setCards(cards.map(c => c.deckId === deckId ? { ...c, deleted: true, deletedAt: now, lastModified: now } : c)); setConfirmDialog({ isOpen: false }); setView('library'); notify('Deck deleted'); } }); };
+  const addCard = (data) => { setCards([...cards, { id: generateId(), deckId: selDeck.id, ...data, ...SRS.init() }]); toggleModal('addCard', false); notify('Card added! ✨'); };
+  const updateCard = (id, data) => { setCards(cards.map(c => c.id === id ? { ...c, ...data, lastModified: Date.now() } : c)); toggleModal('editCard', false); setEditingCard(null); notify('Card updated'); };
+  const deleteCard = (id) => { setConfirmDialog({ isOpen: true, type: 'danger', title: 'Delete Card?', message: 'This card will be permanently removed.', onConfirm: () => { const now = Date.now(); setCards(cards.map(c => c.id === id ? { ...c, deleted: true, deletedAt: now, lastModified: now } : c)); setConfirmDialog({ isOpen: false }); notify('Card deleted'); } }); };
+  const importCSV = (txt) => { const nc = parseCSV(txt).map(c => ({ id: generateId(), deckId: selDeck.id, ...c, ...SRS.init() })); if (nc.length) { setCards([...cards, ...nc]); toggleModal('import', false); notify(`Imported ${nc.length} cards! 📚`); } else notify('No valid cards found', 'error'); };
+  const handleExport = () => { const dc = filterActive(cards.filter(c => c.deckId === selDeck.id)); if (!dc.length) { notify('No cards to export', 'warning'); return; } exportToCSV(dc, selDeck.title); notify('Exported! 📤'); };
 
   const handleGenerateDeck = async () => {
     if (!genTopic.trim()) { notify('Please enter a topic', 'warning'); return; }
@@ -937,640 +540,185 @@ function App() {
     setGenerating(true);
     try {
       const result = await AIService.generateDeck(genTopic, genCount, genLevel, apiKey);
-      let wordsArray = null;
-      if (Array.isArray(result)) wordsArray = result;
-      else if (result.words) wordsArray = result.words;
-      else if (result.vocabulary) wordsArray = result.vocabulary;
-      else { for (const key of Object.keys(result)) { if (Array.isArray(result[key])) { wordsArray = result[key]; break; } } }
-      if (!wordsArray?.length) throw new Error('Invalid AI response');
-      const newDeckId = generateId();
-      const newDeck = { id: newDeckId, title: `${genTopic} (AI)`, createdAt: new Date().toISOString(), color: DECK_COLORS[decks.length % 4], isAIGenerated: true, lastModified: Date.now() };
-      const newCards = wordsArray.map(w => ({
-        id: generateId(), deckId: newDeckId,
-        front: w.front || w.word || '', back: w.back || w.meaning || w.thai || '',
-        phonetic: w.phonetic || '', example: w.example || '',
-        ...SRS.init()
-      })).filter(c => c.front && c.back);
-      if (!newCards.length) throw new Error('No valid cards');
-      setDecks([...decks, newDeck]);
-      setCards([...cards, ...newCards]);
-      toggleModal('generateDeck', false);
-      setGenTopic('');
-      notify(`Generated ${newCards.length} cards! ✨`);
-      setSelDeck(newDeck);
-      setView('deck');
+      let wa = Array.isArray(result) ? result : result.words || result.vocabulary || null;
+      if (!wa) { for (const k of Object.keys(result)) { if (Array.isArray(result[k])) { wa = result[k]; break; } } }
+      if (!wa?.length) throw new Error('Invalid AI response');
+      const nid = generateId();
+      const nd = { id: nid, title: `${genTopic} (AI)`, createdAt: new Date().toISOString(), color: DECK_COLORS[decks.length % 4], isAIGenerated: true, lastModified: Date.now() };
+      const nc = wa.map(w => ({ id: generateId(), deckId: nid, front: w.front||w.word||'', back: w.back||w.meaning||w.thai||'', phonetic: w.phonetic||'', example: w.example||'', ...SRS.init() })).filter(c => c.front && c.back);
+      if (!nc.length) throw new Error('No valid cards');
+      setDecks([...decks, nd]); setCards([...cards, ...nc]); toggleModal('generateDeck', false); setGenTopic(''); notify(`Generated ${nc.length} cards! ✨`); setSelDeck(nd); setView('deck');
     } catch (err) { notify(err.message || 'Generation failed', 'error'); }
     setGenerating(false);
   };
 
-  const startStudy = (deckId = null) => {
-    const activeCardsAll = filterActive(cards);
-    
-    let pool = deckId ? activeCardsAll.filter(c => c.deckId === deckId && SRS.isDue(c)) : activeCardsAll.filter(SRS.isDue);
-
-    // 🔥 Safety: ถ้าติด Focus Lock แล้วไม่มีการ์ด Due → สุ่มการ์ดเก่ามาทวน
-    if (pool.length === 0 && isFocusLocked) {
-      pool = activeCardsAll.sort(() => Math.random() - 0.5).slice(0, 10);
-      if (pool.length > 0) notify('No due cards. Starting Random Review to unlock! 🛡️', 'info');
-    }
-
-    if (!pool.length) { notify('No cards available to study!', 'warning'); return; }
-    
-    setStudyQ(pool.sort(() => Math.random() - 0.5));
-    setCurrCard(0); setFlipped(false); setAiData(null); setShowPractice(false); setView('study');
-  };
-
-  const handleReview = (q) => {
-    const c = studyQ[currCard];
-    const updated = SRS.calculate(c, q);
-    setCards(cards.map(x => x.id === c.id ? { ...x, ...updated } : x));
-    setReviews([...reviews, { cardId: c.id, q, date: new Date().toISOString() }]);
-    const today = new Date().toDateString();
-    const todayReviews = reviews.filter(r => new Date(r.date).toDateString() === today).length + 1;
-    if (todayReviews >= CONFIG.DAILY_GOAL && stats.lastGoalDate !== today) {
-      setStats(prev => ({ ...prev, streak: prev.streak + 1, totalReviews: prev.totalReviews + 1, lastGoalDate: today }));
-    } else {
-      setStats(prev => ({ ...prev, totalReviews: prev.totalReviews + 1 }));
-    }
-
-    // 🔥 Session Focus: นับคำที่ทำใน session นี้
-    const nextSessionCount = sessionCount + 1;
-    setSessionCount(nextSessionCount);
-
-    // 🔥 ถ้าทำครบเป้า Focus → ปลดล็อก + เด้งกลับ Home ทันที
-    if (focusSettings.enabled && nextSessionCount >= (focusSettings.cardsPerVisit || 3)) {
-      notify(`ปลดล็อกแล้ว! ทบทวนครบ ${nextSessionCount} คำ 🎉`);
-      setView('home');
-      return;
-    }
-
-    if (currCard < studyQ.length - 1) {
-      setCurrCard(currCard + 1); setFlipped(false); setAiData(null); setShowPractice(false);
-    } else { notify('Session complete! 🎉'); setView('home'); }
-  };
-
-  const handleAI = async () => {
-    if (!apiKey) { toggleModal('settings', true); notify('Add API key first', 'warning'); return; }
-    setAiLoading(true);
-    try {
-      const data = await AIService.getAIHelp(studyQ[currCard].front, studyQ[currCard].back, apiKey);
-      setAiData(data);
-      if (!studyQ[currCard].example && data.example) {
-        setCards(cards.map(x => x.id === studyQ[currCard].id ? { ...x, example: data.example, lastModified: Date.now() } : x));
-      }
-    } catch (e) { notify(e.message || 'AI failed', 'error'); }
-    setAiLoading(false);
-  };
-
-  const updateSyncKey = (newKey) => {
-    const cleanKey = newKey?.trim();
-    if (!cleanKey) { notify('Enter a sync key', 'warning'); return; }
-    CloudSync.setSyncKey(cleanKey);
-    setCurrentSyncKey(cleanKey);
-    notify('Sync key updated! Reloading...');
-    setTimeout(() => window.location.reload(), 1000);
-  };
-
-  // Computed values
-  const activeDecks = useMemo(() => filterActive(decks), [decks]);
-  const activeCards = useMemo(() => filterActive(cards), [cards]);
-  const dueCount = useMemo(() => activeCards.filter(SRS.isDue).length, [activeCards]);
-  const todayProgress = useMemo(() => {
-    const today = new Date().toDateString();
-    return Math.min(reviews.filter(r => new Date(r.date).toDateString() === today).length, CONFIG.DAILY_GOAL);
-  }, [reviews]);
-  const filteredCards = useMemo(() => {
-    if (!selDeck) return [];
-    const dc = activeCards.filter(c => c.deckId === selDeck.id);
-    if (!searchQuery) return dc;
-    const q = searchQuery.toLowerCase();
-    return dc.filter(c => c.front.toLowerCase().includes(q) || c.back.toLowerCase().includes(q));
-  }, [activeCards, selDeck, searchQuery]);
-
-  // 🔥 FOCUS LOCK: Session-based (ล็อกทุกครั้งที่เปิดเว็บใหม่)
+  // 🔥 FOCUS LOCK: Session-based
   const isFocusLocked = useMemo(() => {
     if (!focusSettings.enabled) return false;
     return sessionCount < (focusSettings.cardsPerVisit || 3);
   }, [focusSettings, sessionCount]);
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-cream flex flex-col items-center justify-center p-4">
-        <div className="animate-float mb-6"><Logo size={80} /></div>
-        <h1 className="text-2xl font-bold gradient-text mb-2">VocabLab</h1>
-        <p className="text-muted mb-6">Loading...</p>
-        <div className="w-48 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-primary to-gold rounded-full skeleton" style={{ width: '70%' }}></div>
-        </div>
-      </div>
-    );
-  }
+  const startStudy = (deckId = null) => {
+    const active = filterActive(cards);
+    let pool = deckId ? active.filter(c => c.deckId === deckId && SRS.isDue(c)) : active.filter(SRS.isDue);
+    if (pool.length === 0 && isFocusLocked) { pool = active.sort(() => Math.random() - 0.5).slice(0, 10); if (pool.length > 0) notify('No due cards. Starting Random Review to unlock! 🛡️', 'info'); }
+    if (!pool.length) { notify('No cards available to study!', 'warning'); return; }
+    setStudyQ(pool.sort(() => Math.random() - 0.5)); setCurrCard(0); setFlipped(false); setAiData(null); setShowPractice(false); setView('study');
+  };
+
+  const handleReview = (q) => {
+    const c = studyQ[currCard]; const updated = SRS.calculate(c, q);
+    setCards(cards.map(x => x.id === c.id ? { ...x, ...updated } : x));
+    setReviews([...reviews, { cardId: c.id, q, date: new Date().toISOString() }]);
+    const today = new Date().toDateString(); const tr = reviews.filter(r => new Date(r.date).toDateString() === today).length + 1;
+    if (tr >= CONFIG.DAILY_GOAL && stats.lastGoalDate !== today) setStats(prev => ({ ...prev, streak: prev.streak + 1, totalReviews: prev.totalReviews + 1, lastGoalDate: today }));
+    else setStats(prev => ({ ...prev, totalReviews: prev.totalReviews + 1 }));
+
+    const nextSC = sessionCount + 1; setSessionCount(nextSC);
+    if (focusSettings.enabled && nextSC >= (focusSettings.cardsPerVisit || 3)) { notify(`ปลดล็อกแล้ว! ทบทวนครบ ${nextSC} คำ 🎉`); setView('home'); return; }
+    if (currCard < studyQ.length - 1) { setCurrCard(currCard + 1); setFlipped(false); setAiData(null); setShowPractice(false); } else { notify('Session complete! 🎉'); setView('home'); }
+  };
+
+  const handleAI = async () => {
+    if (!apiKey) { toggleModal('settings', true); notify('Add API key first', 'warning'); return; }
+    setAiLoading(true);
+    try { const data = await AIService.getAIHelp(studyQ[currCard].front, studyQ[currCard].back, apiKey); setAiData(data); if (!studyQ[currCard].example && data.example) setCards(cards.map(x => x.id === studyQ[currCard].id ? { ...x, example: data.example, lastModified: Date.now() } : x)); }
+    catch (e) { notify(e.message || 'AI failed', 'error'); }
+    setAiLoading(false);
+  };
+
+  const updateSyncKey = (newKey) => { const ck = newKey?.trim(); if (!ck) { notify('Enter a sync key', 'warning'); return; } CloudSync.setSyncKey(ck); setCurrentSyncKey(ck); notify('Sync key updated! Reloading...'); setTimeout(() => window.location.reload(), 1000); };
+
+  // Computed
+  const activeDecks = useMemo(() => filterActive(decks), [decks]);
+  const activeCards = useMemo(() => filterActive(cards), [cards]);
+  const dueCount = useMemo(() => activeCards.filter(SRS.isDue).length, [activeCards]);
+  const todayProgress = useMemo(() => { const today = new Date().toDateString(); return Math.min(reviews.filter(r => new Date(r.date).toDateString() === today).length, CONFIG.DAILY_GOAL); }, [reviews]);
+  const filteredCards = useMemo(() => { if (!selDeck) return []; const dc = activeCards.filter(c => c.deckId === selDeck.id); if (!searchQuery) return dc; const q = searchQuery.toLowerCase(); return dc.filter(c => c.front.toLowerCase().includes(q) || c.back.toLowerCase().includes(q)); }, [activeCards, selDeck, searchQuery]);
+
+  if (isLoading) return (<div className="min-h-screen bg-cream flex flex-col items-center justify-center p-4"><div className="animate-float mb-6"><Logo size={80} /></div><h1 className="text-2xl font-bold gradient-text mb-2">VocabLab</h1><p className="text-muted mb-6">Loading...</p><div className="w-48 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-primary to-gold rounded-full skeleton" style={{ width: '70%' }}></div></div></div>);
 
   return (
     <div className="min-h-screen bg-cream text-heading pb-safe">
       <OfflineIndicator isOffline={isOffline} />
 
-      {/* 🔥 FOCUS GATE: ล็อกทุกครั้งที่เปิดเว็บจนกว่าจะทำครบ */}
-      {isFocusLocked && view !== 'study' && (
-        <FocusGate 
-          required={focusSettings.cardsPerVisit || 3} 
-          current={sessionCount} 
-          onStart={() => startStudy()} 
-        />
+      {/* 🔥 FOCUS GATE: แสดงเฉพาะหน้า Home เท่านั้น */}
+      {isFocusLocked && view === 'home' && (
+        <FocusGate required={focusSettings.cardsPerVisit || 3} current={sessionCount} onStart={() => startStudy()} />
       )}
-       
+
       <header className="fixed top-0 w-full bg-white/80 backdrop-blur-lg z-40 pt-safe px-4 pb-3 border-b border-slate-100">
         <div className="flex justify-between items-center max-w-lg mx-auto">
-          <button onClick={() => setView('home')} className="flex items-center gap-2">
-            <Logo size={32} />
-            <h1 className="text-xl font-bold gradient-text">VocabLab</h1>
-          </button>
+          <button onClick={() => setView('home')} className="flex items-center gap-2"><Logo size={32} /><h1 className="text-xl font-bold gradient-text">VocabLab</h1></button>
           <div className="flex items-center gap-2">
-            {cloudEnabled && (
-              <div className={`p-2 rounded-full ${syncing ? 'bg-sky-50' : isOffline ? 'bg-red-50' : 'bg-emerald-50'}`}>
-                <Icon name={syncing ? 'loader-2' : isOffline ? 'cloud-off' : 'cloud'} size={18} 
-                  className={`${syncing ? 'animate-spin text-sky' : isOffline ? 'text-coral' : 'text-mint'}`} />
-              </div>
-            )}
-            <button onClick={() => toggleModal('settings', true)} className="p-2 rounded-full hover:bg-slate-100">
-              <Icon name="settings" size={20} className="text-muted" />
-            </button>
+            {cloudEnabled && (<div className={`p-2 rounded-full ${syncing ? 'bg-sky-50' : isOffline ? 'bg-red-50' : 'bg-emerald-50'}`}><Icon name={syncing ? 'loader-2' : isOffline ? 'cloud-off' : 'cloud'} size={18} className={`${syncing ? 'animate-spin text-sky' : isOffline ? 'text-coral' : 'text-mint'}`} /></div>)}
+            <button onClick={() => toggleModal('settings', true)} className="p-2 rounded-full hover:bg-slate-100"><Icon name="settings" size={20} className="text-muted" /></button>
           </div>
         </div>
       </header>
 
       <main className="pt-24 px-4 pb-28 max-w-lg mx-auto">
-        
-        {/* HOME */}
         {view === 'home' && (
           <div className="animate-fade-in space-y-5">
-            <div className="card p-6">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-lg font-semibold text-heading mb-3">Daily Goal</h2>
-                  <div className="flex items-center gap-2 bg-orange-50 px-4 py-2 rounded-full">
-                    <Icon name="flame" size={18} className="text-primary" />
-                    <span className="font-bold text-primary">{stats.streak} Day Streak</span>
-                  </div>
-                </div>
-                <CircularProgress value={todayProgress} max={CONFIG.DAILY_GOAL} />
-              </div>
-            </div>
-
-            {dueCount > 0 ? (
-              <button onClick={() => startStudy()} className="w-full btn-primary py-5 rounded-2xl text-lg flex items-center justify-center gap-3">
-                <Icon name="play" size={24} fill="currentColor" /> Study {dueCount} Due Cards
-              </button>
-            ) : (
-              <div className="card p-8 text-center border-2 border-dashed border-emerald-200 bg-emerald-50/50">
-                <Icon name="check-circle" size={40} className="text-mint mx-auto mb-3" />
-                <h3 className="text-xl font-bold mb-2">All caught up!</h3>
-                <p className="text-body">No cards due. Great job! 🎉</p>
-              </div>
-            )}
-
-            <button onClick={() => toggleModal('generateDeck', true)}
-              className="w-full bg-gradient-to-r from-violet-500 to-purple-600 text-white py-4 rounded-2xl font-semibold flex items-center justify-center gap-3 shadow-lg">
-              <Icon name="sparkles" size={22} /> Generate Deck with AI
-            </button>
-
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { value: activeCards.length, label: 'Cards', color: 'text-primary' },
-                { value: activeDecks.length, label: 'Decks', color: 'text-lavender' },
-                { value: stats.totalReviews || 0, label: 'Reviews', color: 'text-mint' },
-              ].map((s, i) => (
-                <div key={i} className="card p-4 text-center">
-                  <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
-                  <div className="text-xs text-muted uppercase mt-1">{s.label}</div>
-                </div>
-              ))}
-            </div>
+            <div className="card p-6"><div className="flex justify-between items-center"><div><h2 className="text-lg font-semibold text-heading mb-3">Daily Goal</h2><div className="flex items-center gap-2 bg-orange-50 px-4 py-2 rounded-full"><Icon name="flame" size={18} className="text-primary" /><span className="font-bold text-primary">{stats.streak} Day Streak</span></div></div><CircularProgress value={todayProgress} max={CONFIG.DAILY_GOAL} /></div></div>
+            {dueCount > 0 ? (<button onClick={() => startStudy()} className="w-full btn-primary py-5 rounded-2xl text-lg flex items-center justify-center gap-3"><Icon name="play" size={24} fill="currentColor" /> Study {dueCount} Due Cards</button>) : (<div className="card p-8 text-center border-2 border-dashed border-emerald-200 bg-emerald-50/50"><Icon name="check-circle" size={40} className="text-mint mx-auto mb-3" /><h3 className="text-xl font-bold mb-2">All caught up!</h3><p className="text-body">No cards due. Great job! 🎉</p></div>)}
+            <button onClick={() => toggleModal('generateDeck', true)} className="w-full bg-gradient-to-r from-violet-500 to-purple-600 text-white py-4 rounded-2xl font-semibold flex items-center justify-center gap-3 shadow-lg"><Icon name="sparkles" size={22} /> Generate Deck with AI</button>
+            <div className="grid grid-cols-3 gap-3">{[{ value: activeCards.length, label: 'Cards', color: 'text-primary' }, { value: activeDecks.length, label: 'Decks', color: 'text-lavender' }, { value: stats.totalReviews || 0, label: 'Reviews', color: 'text-mint' }].map((s, i) => (<div key={i} className="card p-4 text-center"><div className={`text-2xl font-bold ${s.color}`}>{s.value}</div><div className="text-xs text-muted uppercase mt-1">{s.label}</div></div>))}</div>
           </div>
         )}
 
-        {/* LIBRARY */}
         {view === 'library' && (
           <div className="animate-fade-in space-y-4">
-            <div className="flex justify-between items-center mb-2">
-              <h2 className="text-2xl font-bold">My Decks</h2>
-              <div className="flex gap-2">
-                <button onClick={() => toggleModal('generateDeck', true)} className="p-2.5 btn-ai rounded-full">
-                  <Icon name="sparkles" size={20} />
-                </button>
-                <button onClick={() => toggleModal('addDeck', true)} className="p-2.5 btn-primary rounded-full">
-                  <Icon name="plus" size={22} />
-                </button>
-              </div>
-            </div>
-
-            {activeDecks.length === 0 ? (
-              <div className="card p-8 text-center border-2 border-dashed">
-                <Icon name="folder-plus" size={48} className="text-muted mx-auto mb-4" />
-                <p className="text-body">No decks yet</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {activeDecks.map((d, idx) => {
-                  const colors = getColorClasses(d.color || DECK_COLORS[idx % 4]);
-                  const dc = activeCards.filter(c => c.deckId === d.id);
-                  const due = dc.filter(SRS.isDue).length;
-                  return (
-                    <div key={d.id} onClick={() => { setSelDeck(d); setSearchQuery(''); setView('deck'); }}
-                      className="card p-5 cursor-pointer hover:shadow-elevated transition-all active:scale-[0.99]">
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-start gap-3">
-                          <div className={`w-3 h-3 rounded-full ${colors.dot} mt-2`}></div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-lg">{d.title}</h3>
-                              {d.isAIGenerated && <Icon name="sparkles" size={14} className="text-lavender" />}
-                            </div>
-                            <p className="text-sm text-muted">{dc.length} cards</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {due > 0 && <span className={`${colors.bg} ${colors.text} px-3 py-1 rounded-full text-sm font-semibold`}>{due} due</span>}
-                          <Icon name="chevron-right" size={20} className="text-muted" />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+            <div className="flex justify-between items-center mb-2"><h2 className="text-2xl font-bold">My Decks</h2><div className="flex gap-2"><button onClick={() => toggleModal('generateDeck', true)} className="p-2.5 btn-ai rounded-full"><Icon name="sparkles" size={20} /></button><button onClick={() => toggleModal('addDeck', true)} className="p-2.5 btn-primary rounded-full"><Icon name="plus" size={22} /></button></div></div>
+            {activeDecks.length === 0 ? (<div className="card p-8 text-center border-2 border-dashed"><Icon name="folder-plus" size={48} className="text-muted mx-auto mb-4" /><p className="text-body">No decks yet</p></div>) : (
+              <div className="space-y-3">{activeDecks.map((d, idx) => { const colors = getColorClasses(d.color || DECK_COLORS[idx % 4]); const dc = activeCards.filter(c => c.deckId === d.id); const due = dc.filter(SRS.isDue).length; return (<div key={d.id} onClick={() => { setSelDeck(d); setSearchQuery(''); setView('deck'); }} className="card p-5 cursor-pointer hover:shadow-elevated transition-all active:scale-[0.99]"><div className="flex justify-between items-start"><div className="flex items-start gap-3"><div className={`w-3 h-3 rounded-full ${colors.dot} mt-2`}></div><div><div className="flex items-center gap-2"><h3 className="font-bold text-lg">{d.title}</h3>{d.isAIGenerated && <Icon name="sparkles" size={14} className="text-lavender" />}</div><p className="text-sm text-muted">{dc.length} cards</p></div></div><div className="flex items-center gap-3">{due > 0 && <span className={`${colors.bg} ${colors.text} px-3 py-1 rounded-full text-sm font-semibold`}>{due} due</span>}<Icon name="chevron-right" size={20} className="text-muted" /></div></div></div>); })}</div>
             )}
           </div>
         )}
 
-        {/* DECK VIEW */}
         {view === 'deck' && selDeck && (
           <div className="animate-fade-in space-y-4">
-            <button onClick={() => setView('library')} className="flex items-center text-muted gap-1 text-sm hover:text-body">
-              <Icon name="arrow-left" size={16} /> Back
-            </button>
-              
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold">{selDeck.title}</h1>
-                  {selDeck.isAIGenerated && <span className="bg-violet-100 text-lavender text-xs px-2 py-0.5 rounded-full font-medium">AI</span>}
-                </div>
-                <p className="text-muted">{activeCards.filter(c => c.deckId === selDeck.id).length} cards</p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={handleExport} className="p-2.5 btn-secondary rounded-xl"><Icon name="download" size={18} /></button>
-                <button onClick={() => toggleModal('import', true)} className="p-2.5 btn-secondary rounded-xl"><Icon name="upload" size={18} /></button>
-                <button onClick={() => toggleModal('addCard', true)} className="p-2.5 btn-primary rounded-xl"><Icon name="plus" size={18} /></button>
-              </div>
-            </div>
-
+            <button onClick={() => setView('library')} className="flex items-center text-muted gap-1 text-sm hover:text-body"><Icon name="arrow-left" size={16} /> Back</button>
+            <div className="flex justify-between items-start mb-4"><div><div className="flex items-center gap-2"><h1 className="text-2xl font-bold">{selDeck.title}</h1>{selDeck.isAIGenerated && <span className="bg-violet-100 text-lavender text-xs px-2 py-0.5 rounded-full font-medium">AI</span>}</div><p className="text-muted">{activeCards.filter(c => c.deckId === selDeck.id).length} cards</p></div><div className="flex gap-2"><button onClick={handleExport} className="p-2.5 btn-secondary rounded-xl"><Icon name="download" size={18} /></button><button onClick={() => toggleModal('import', true)} className="p-2.5 btn-secondary rounded-xl"><Icon name="upload" size={18} /></button><button onClick={() => toggleModal('addCard', true)} className="p-2.5 btn-primary rounded-xl"><Icon name="plus" size={18} /></button></div></div>
             <SearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search cards..." />
-
-            {activeCards.filter(c => c.deckId === selDeck.id && SRS.isDue(c)).length > 0 && (
-              <button onClick={() => startStudy(selDeck.id)}
-                className="w-full border-2 border-primary text-primary py-3 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-orange-50">
-                <Icon name="play" size={18} /> Study {activeCards.filter(c => c.deckId === selDeck.id && SRS.isDue(c)).length} Due
-              </button>
-            )}
-
-            <div className="space-y-2 pb-10">
-              {filteredCards.length === 0 ? (
-                <div className="card p-8 text-center">
-                  <Icon name="inbox" size={40} className="text-muted mx-auto mb-3" />
-                  <p className="text-body">{searchQuery ? 'No matches' : 'No cards yet'}</p>
-                </div>
-              ) : (
-                filteredCards.map(c => (
-                  <div key={c.id} className="card p-4 flex justify-between items-start">
-                    <div className="flex-1 cursor-pointer" onClick={() => { setEditingCard(c); toggleModal('editCard', true); }}>
-                      <div className="font-semibold">{c.front}</div>
-                      <div className="text-body">{c.back}</div>
-                      {c.phonetic && <div className="text-xs text-muted mt-1">{c.phonetic}</div>}
-                    </div>
-                    <div className="flex gap-1 ml-3">
-                      <button onClick={(e) => { e.stopPropagation(); speak(c.front); }} className="p-2 hover:bg-slate-100 rounded-lg">
-                        <Icon name="volume-2" size={16} className="text-muted" />
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); deleteCard(c.id); }} className="p-2 hover:bg-red-50 rounded-lg">
-                        <Icon name="trash-2" size={16} className="text-coral" />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <button onClick={() => deleteDeck(selDeck.id)} className="w-full py-3 rounded-xl text-coral border border-red-200 hover:bg-red-50">
-              Delete Deck
-            </button>
+            {activeCards.filter(c => c.deckId === selDeck.id && SRS.isDue(c)).length > 0 && (<button onClick={() => startStudy(selDeck.id)} className="w-full border-2 border-primary text-primary py-3 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-orange-50"><Icon name="play" size={18} /> Study {activeCards.filter(c => c.deckId === selDeck.id && SRS.isDue(c)).length} Due</button>)}
+            <div className="space-y-2 pb-10">{filteredCards.length === 0 ? (<div className="card p-8 text-center"><Icon name="inbox" size={40} className="text-muted mx-auto mb-3" /><p className="text-body">{searchQuery ? 'No matches' : 'No cards yet'}</p></div>) : (filteredCards.map(c => (<div key={c.id} className="card p-4 flex justify-between items-start"><div className="flex-1 cursor-pointer" onClick={() => { setEditingCard(c); toggleModal('editCard', true); }}><div className="font-semibold">{c.front}</div><div className="text-body">{c.back}</div>{c.phonetic && <div className="text-xs text-muted mt-1">{c.phonetic}</div>}</div><div className="flex gap-1 ml-3"><button onClick={(e) => { e.stopPropagation(); speak(c.front); }} className="p-2 hover:bg-slate-100 rounded-lg"><Icon name="volume-2" size={16} className="text-muted" /></button><button onClick={(e) => { e.stopPropagation(); deleteCard(c.id); }} className="p-2 hover:bg-red-50 rounded-lg"><Icon name="trash-2" size={16} className="text-coral" /></button></div></div>)))}</div>
+            <button onClick={() => deleteDeck(selDeck.id)} className="w-full py-3 rounded-xl text-coral border border-red-200 hover:bg-red-50">Delete Deck</button>
           </div>
         )}
 
-        {/* STUDY VIEW */}
         {view === 'study' && studyQ.length > 0 && (
           <div className="animate-fade-in flex flex-col" style={{ minHeight: 'calc(100vh - 200px)' }}>
             <div className="flex justify-between items-center mb-6">
-              <button onClick={() => setView('home')} className="p-2 hover:bg-slate-100 rounded-xl">
-                <Icon name="x" size={20} className="text-muted" />
-              </button>
+              <button onClick={() => setView('home')} className="p-2 hover:bg-slate-100 rounded-xl"><Icon name="x" size={20} className="text-muted" /></button>
               <div className="flex items-center gap-3">
-                {focusSettings.enabled && (
-                  <span className="text-xs bg-orange-50 text-primary px-2.5 py-1 rounded-full font-bold">
-                    Session {sessionCount + 1}/{focusSettings.cardsPerVisit}
-                  </span>
-                )}
+                {focusSettings.enabled && (<span className="text-xs bg-orange-50 text-primary px-2.5 py-1 rounded-full font-bold">Session {sessionCount + 1}/{focusSettings.cardsPerVisit}</span>)}
                 <span className="text-sm text-muted font-medium">{currCard + 1}/{studyQ.length}</span>
-                <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-primary to-gold rounded-full transition-all" 
-                    style={{ width: `${((currCard + 1) / studyQ.length) * 100}%` }} />
-                </div>
+                <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-primary to-gold rounded-full transition-all" style={{ width: `${((currCard + 1) / studyQ.length) * 100}%` }} /></div>
               </div>
             </div>
-
             <div className="flex-1 card-flip">
-              <div onClick={() => !flipped && setFlipped(true)}
-                className={`card-flip-inner w-full h-full ${flipped ? 'flipped' : ''}`} style={{ minHeight: '360px' }}>
-                  
+              <div onClick={() => !flipped && setFlipped(true)} className={`card-flip-inner w-full h-full ${flipped ? 'flipped' : ''}`} style={{ minHeight: '360px' }}>
                 <div className="card-front absolute inset-0 card p-8 flex flex-col items-center justify-center cursor-pointer shadow-elevated">
                   <h2 className="text-4xl font-bold mb-4 text-center">{studyQ[currCard].front}</h2>
                   {studyQ[currCard].phonetic && <p className="text-muted mb-6">{studyQ[currCard].phonetic}</p>}
-                  <button onClick={(e) => { e.stopPropagation(); speak(studyQ[currCard].front); }}
-                    className="p-4 bg-orange-50 rounded-full mb-8 hover:bg-orange-100">
-                    <Icon name="volume-2" size={28} className="text-primary" />
-                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); speak(studyQ[currCard].front); }} className="p-4 bg-orange-50 rounded-full mb-8 hover:bg-orange-100"><Icon name="volume-2" size={28} className="text-primary" /></button>
                   <p className="text-muted text-sm animate-pulse">Tap to reveal</p>
                 </div>
-
                 <div className="card-back absolute inset-0 card p-6 flex flex-col items-center overflow-y-auto shadow-elevated">
                   <p className="text-muted text-sm mb-2">{studyQ[currCard].front}</p>
                   <h2 className="text-3xl font-bold gradient-text mb-4 text-center">{studyQ[currCard].back}</h2>
-                    
-                  {(aiData?.example || studyQ[currCard].example) && (
-                    <div className="bg-slate-50 p-4 rounded-xl mb-4 w-full border border-slate-100">
-                      <p className="text-sm text-body italic">"{aiData?.example || studyQ[currCard].example}"</p>
-                    </div>
-                  )}
-
-                  {aiData && (
-                    <div className="w-full space-y-3 mb-4">
-                      {aiData.partOfSpeech && <span className="inline-block bg-violet-100 text-lavender px-3 py-1 rounded-full text-sm font-medium">{aiData.partOfSpeech}</span>}
-                      {aiData.memoryTip && (
-                        <div className="bg-amber-50 p-3 rounded-xl border border-amber-100">
-                          <p className="text-xs text-gold font-medium mb-1">💡 Memory Tip</p>
-                          <p className="text-sm text-body">{aiData.memoryTip}</p>
-                        </div>
-                      )}
-                      {aiData.collocations && (
-                        <div className="flex flex-wrap gap-2">
-                          {aiData.collocations.map((col, i) => <span key={i} className="bg-emerald-50 text-mint px-2 py-1 rounded text-xs font-medium border border-emerald-100">{col}</span>)}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
+                  {(aiData?.example || studyQ[currCard].example) && (<div className="bg-slate-50 p-4 rounded-xl mb-4 w-full border border-slate-100"><p className="text-sm text-body italic">"{aiData?.example || studyQ[currCard].example}"</p></div>)}
+                  {aiData && (<div className="w-full space-y-3 mb-4">{aiData.partOfSpeech && <span className="inline-block bg-violet-100 text-lavender px-3 py-1 rounded-full text-sm font-medium">{aiData.partOfSpeech}</span>}{aiData.memoryTip && (<div className="bg-amber-50 p-3 rounded-xl border border-amber-100"><p className="text-xs text-gold font-medium mb-1">💡 Memory Tip</p><p className="text-sm text-body">{aiData.memoryTip}</p></div>)}{aiData.collocations && (<div className="flex flex-wrap gap-2">{aiData.collocations.map((col, i) => <span key={i} className="bg-emerald-50 text-mint px-2 py-1 rounded text-xs font-medium border border-emerald-100">{col}</span>)}</div>)}</div>)}
                   <div className="flex gap-2 w-full">
-                    {!aiData && !studyQ[currCard].example && (
-                      <button onClick={handleAI} disabled={aiLoading}
-                        className="flex-1 bg-gradient-to-r from-amber-50 to-orange-50 text-primary px-4 py-2 rounded-full text-sm font-semibold border border-orange-100 flex items-center justify-center gap-2">
-                        {aiLoading ? <Icon name="loader-2" size={16} className="animate-spin" /> : <Icon name="sparkles" size={16} />}
-                        AI Explain
-                      </button>
-                    )}
-                    <button onClick={() => setShowPractice(!showPractice)}
-                      className={`flex-1 px-4 py-2 rounded-full text-sm font-semibold flex items-center justify-center gap-2 ${
-                        showPractice ? 'bg-violet-500 text-white' : 'bg-violet-50 text-lavender border border-violet-200'
-                      }`}>
-                      <Icon name="pen-tool" size={16} /> Practice
-                    </button>
+                    {!aiData && !studyQ[currCard].example && (<button onClick={handleAI} disabled={aiLoading} className="flex-1 bg-gradient-to-r from-amber-50 to-orange-50 text-primary px-4 py-2 rounded-full text-sm font-semibold border border-orange-100 flex items-center justify-center gap-2">{aiLoading ? <Icon name="loader-2" size={16} className="animate-spin" /> : <Icon name="sparkles" size={16} />} AI Explain</button>)}
+                    <button onClick={() => setShowPractice(!showPractice)} className={`flex-1 px-4 py-2 rounded-full text-sm font-semibold flex items-center justify-center gap-2 ${showPractice ? 'bg-violet-500 text-white' : 'bg-violet-50 text-lavender border border-violet-200'}`}><Icon name="pen-tool" size={16} /> Practice</button>
                   </div>
-
                   {showPractice && <SentenceCheckPanel word={studyQ[currCard].front} apiKey={apiKey} onClose={() => setShowPractice(false)} />}
                 </div>
               </div>
             </div>
-
-            {flipped && (
-              <div className="grid grid-cols-4 gap-2 mt-6">
-                {[
-                  { label: 'Again', color: 'bg-coral hover:bg-red-600' },
-                  { label: 'Hard', color: 'bg-gold hover:bg-amber-600' },
-                  { label: 'Good', color: 'bg-mint hover:bg-emerald-600' },
-                  { label: 'Easy', color: 'bg-lavender hover:bg-violet-600' },
-                ].map((btn, i) => (
-                  <button key={i} onClick={() => handleReview(i)}
-                    className={`${btn.color} text-white py-4 rounded-xl font-bold text-sm shadow-soft active:scale-95 transition-all`}>
-                    {btn.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            {flipped && (<div className="grid grid-cols-4 gap-2 mt-6">{[{ label: 'Again', color: 'bg-coral hover:bg-red-600' }, { label: 'Hard', color: 'bg-gold hover:bg-amber-600' }, { label: 'Good', color: 'bg-mint hover:bg-emerald-600' }, { label: 'Easy', color: 'bg-lavender hover:bg-violet-600' }].map((btn, i) => (<button key={i} onClick={() => handleReview(i)} className={`${btn.color} text-white py-4 rounded-xl font-bold text-sm shadow-soft active:scale-95 transition-all`}>{btn.label}</button>))}</div>)}
           </div>
         )}
       </main>
 
-      {/* Bottom Nav */}
       {view !== 'study' && (
         <nav className="fixed bottom-0 w-full bg-white/90 backdrop-blur-lg z-30 pb-safe pt-2 px-6 border-t border-slate-100">
           <div className="flex justify-around items-center max-w-lg mx-auto">
-            <button onClick={() => setView('home')} className={`p-3 rounded-xl ${view === 'home' ? 'bg-orange-50 text-primary' : 'text-muted'}`}>
-              <Icon name="home" size={24} />
-            </button>
-            <button onClick={() => toggleModal('generateDeck', true)} className="p-4 btn-ai rounded-full -mt-6 shadow-lg">
-              <Icon name="sparkles" size={26} />
-            </button>
-            <button onClick={() => setView('library')} className={`p-3 rounded-xl ${view === 'library' || view === 'deck' ? 'bg-orange-50 text-primary' : 'text-muted'}`}>
-              <Icon name="library" size={24} />
-            </button>
+            <button onClick={() => setView('home')} className={`p-3 rounded-xl ${view === 'home' ? 'bg-orange-50 text-primary' : 'text-muted'}`}><Icon name="home" size={24} /></button>
+            <button onClick={() => toggleModal('generateDeck', true)} className="p-4 btn-ai rounded-full -mt-6 shadow-lg"><Icon name="sparkles" size={26} /></button>
+            <button onClick={() => setView('library')} className={`p-3 rounded-xl ${view === 'library' || view === 'deck' ? 'bg-orange-50 text-primary' : 'text-muted'}`}><Icon name="library" size={24} /></button>
           </div>
         </nav>
       )}
 
-      {/* MODALS */}
       {Object.values(modals).some(v => v) && (
-        <div className="fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4"
-          onClick={() => setModals({ addDeck: false, addCard: false, import: false, settings: false, editCard: false, generateDeck: false })}>
-          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 modal-content pb-safe animate-slide-up shadow-elevated"
-            onClick={e => e.stopPropagation()}>
-              
-            {modals.addDeck && (
-              <>
-                <h3 className="text-xl font-bold mb-4">Create New Deck</h3>
-                <input id="deckTitle" className="w-full input-clean p-4 rounded-xl mb-4" placeholder="e.g. Business Vocabulary" autoFocus />
-                <button onClick={() => { const t = document.getElementById('deckTitle').value; if (t) createDeck(t); }}
-                  className="w-full btn-primary py-4 rounded-xl">Create Deck</button>
-              </>
-            )}
-
-            {modals.generateDeck && (
-              <>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-violet-100 rounded-xl"><Icon name="sparkles" size={24} className="text-lavender" /></div>
-                  <div>
-                    <h3 className="text-xl font-bold">Generate with AI</h3>
-                    <p className="text-sm text-muted">Create vocabulary deck instantly</p>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-body block mb-2">Topic / หัวข้อ</label>
-                    <input value={genTopic} onChange={e => setGenTopic(e.target.value)}
-                      className="w-full input-clean p-4 rounded-xl" placeholder="e.g. Business Meeting, Travel..." autoFocus />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-sm font-medium text-body block mb-2">จำนวนคำ</label>
-                      <select value={genCount} onChange={e => setGenCount(Number(e.target.value))} className="w-full input-clean p-3 rounded-xl">
-                        <option value={5}>5 words</option>
-                        <option value={10}>10 words</option>
-                        <option value={15}>15 words</option>
-                        <option value={20}>20 words</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-body block mb-2">ระดับ</label>
-                      <select value={genLevel} onChange={e => setGenLevel(e.target.value)} className="w-full input-clean p-3 rounded-xl">
-                        <option value="Basic">Basic</option>
-                        <option value="Intermediate">Intermediate</option>
-                        <option value="Advanced">Advanced</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                <button onClick={handleGenerateDeck} disabled={generating || !genTopic.trim()}
-                  className="w-full btn-ai py-4 rounded-xl mt-4 flex items-center justify-center gap-2 disabled:opacity-50">
-                  {generating ? <><Icon name="loader-2" size={20} className="animate-spin" /> Generating...</> : <><Icon name="sparkles" size={20} /> Generate Deck</>}
-                </button>
-              </>
-            )}
-
-            {modals.addCard && (
-              <>
-                <h3 className="text-xl font-bold mb-4">Add New Card</h3>
-                <input id="cardFront" className="w-full input-clean p-4 rounded-xl mb-3" placeholder="Word (English)" autoFocus />
-                <input id="cardBack" className="w-full input-clean p-4 rounded-xl mb-3" placeholder="Meaning (Thai)" />
-                <input id="cardPhonetic" className="w-full input-clean p-4 rounded-xl mb-3" placeholder="Phonetic (optional)" />
-                <input id="cardExample" className="w-full input-clean p-4 rounded-xl mb-4" placeholder="Example (optional)" />
-                <button onClick={() => {
-                  const front = document.getElementById('cardFront').value;
-                  const back = document.getElementById('cardBack').value;
-                  if (front && back) addCard({ front, back, phonetic: document.getElementById('cardPhonetic').value, example: document.getElementById('cardExample').value });
-                }} className="w-full btn-primary py-4 rounded-xl">Add Card</button>
-              </>
-            )}
-
-            {modals.editCard && editingCard && (
-              <>
-                <h3 className="text-xl font-bold mb-4">Edit Card</h3>
-                <input id="editFront" className="w-full input-clean p-4 rounded-xl mb-3" defaultValue={editingCard.front} />
-                <input id="editBack" className="w-full input-clean p-4 rounded-xl mb-3" defaultValue={editingCard.back} />
-                <input id="editPhonetic" className="w-full input-clean p-4 rounded-xl mb-3" placeholder="Phonetic" defaultValue={editingCard.phonetic || ''} />
-                <input id="editExample" className="w-full input-clean p-4 rounded-xl mb-4" placeholder="Example" defaultValue={editingCard.example || ''} />
-                <button onClick={() => updateCard(editingCard.id, {
-                  front: document.getElementById('editFront').value, back: document.getElementById('editBack').value,
-                  phonetic: document.getElementById('editPhonetic').value, example: document.getElementById('editExample').value,
-                })} className="w-full btn-primary py-4 rounded-xl">Save Changes</button>
-              </>
-            )}
-
-            {modals.import && (
-              <>
-                <h3 className="text-xl font-bold mb-2">Import CSV</h3>
-                <p className="text-sm text-muted mb-4">Format: word, meaning, phonetic, example</p>
-                <textarea id="csvInput" className="w-full input-clean p-4 rounded-xl h-40 mb-4 font-mono text-sm"
-                  placeholder="accomplish, ทำให้สำเร็จ, /əˈkɑːmplɪʃ/, We accomplished our goals." />
-                <button onClick={() => importCSV(document.getElementById('csvInput').value)}
-                  className="w-full btn-primary py-4 rounded-xl">Import Cards</button>
-              </>
-            )}
-
+        <div className="fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setModals({ addDeck: false, addCard: false, import: false, settings: false, editCard: false, generateDeck: false })}>
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 modal-content pb-safe animate-slide-up shadow-elevated" onClick={e => e.stopPropagation()}>
+            {modals.addDeck && (<><h3 className="text-xl font-bold mb-4">Create New Deck</h3><input id="deckTitle" className="w-full input-clean p-4 rounded-xl mb-4" placeholder="e.g. Business Vocabulary" autoFocus /><button onClick={() => { const t = document.getElementById('deckTitle').value; if (t) createDeck(t); }} className="w-full btn-primary py-4 rounded-xl">Create Deck</button></>)}
+            {modals.generateDeck && (<><div className="flex items-center gap-3 mb-4"><div className="p-2 bg-violet-100 rounded-xl"><Icon name="sparkles" size={24} className="text-lavender" /></div><div><h3 className="text-xl font-bold">Generate with AI</h3><p className="text-sm text-muted">Create vocabulary deck instantly</p></div></div><div className="space-y-4"><div><label className="text-sm font-medium text-body block mb-2">Topic / หัวข้อ</label><input value={genTopic} onChange={e => setGenTopic(e.target.value)} className="w-full input-clean p-4 rounded-xl" placeholder="e.g. Business Meeting, Travel..." autoFocus /></div><div className="grid grid-cols-2 gap-3"><div><label className="text-sm font-medium text-body block mb-2">จำนวนคำ</label><select value={genCount} onChange={e => setGenCount(Number(e.target.value))} className="w-full input-clean p-3 rounded-xl"><option value={5}>5 words</option><option value={10}>10 words</option><option value={15}>15 words</option><option value={20}>20 words</option></select></div><div><label className="text-sm font-medium text-body block mb-2">ระดับ</label><select value={genLevel} onChange={e => setGenLevel(e.target.value)} className="w-full input-clean p-3 rounded-xl"><option value="Basic">Basic</option><option value="Intermediate">Intermediate</option><option value="Advanced">Advanced</option></select></div></div></div><button onClick={handleGenerateDeck} disabled={generating || !genTopic.trim()} className="w-full btn-ai py-4 rounded-xl mt-4 flex items-center justify-center gap-2 disabled:opacity-50">{generating ? <><Icon name="loader-2" size={20} className="animate-spin" /> Generating...</> : <><Icon name="sparkles" size={20} /> Generate Deck</>}</button></>)}
+            {modals.addCard && (<><h3 className="text-xl font-bold mb-4">Add New Card</h3><input id="cardFront" className="w-full input-clean p-4 rounded-xl mb-3" placeholder="Word (English)" autoFocus /><input id="cardBack" className="w-full input-clean p-4 rounded-xl mb-3" placeholder="Meaning (Thai)" /><input id="cardPhonetic" className="w-full input-clean p-4 rounded-xl mb-3" placeholder="Phonetic (optional)" /><input id="cardExample" className="w-full input-clean p-4 rounded-xl mb-4" placeholder="Example (optional)" /><button onClick={() => { const f = document.getElementById('cardFront').value; const b = document.getElementById('cardBack').value; if (f && b) addCard({ front: f, back: b, phonetic: document.getElementById('cardPhonetic').value, example: document.getElementById('cardExample').value }); }} className="w-full btn-primary py-4 rounded-xl">Add Card</button></>)}
+            {modals.editCard && editingCard && (<><h3 className="text-xl font-bold mb-4">Edit Card</h3><input id="editFront" className="w-full input-clean p-4 rounded-xl mb-3" defaultValue={editingCard.front} /><input id="editBack" className="w-full input-clean p-4 rounded-xl mb-3" defaultValue={editingCard.back} /><input id="editPhonetic" className="w-full input-clean p-4 rounded-xl mb-3" placeholder="Phonetic" defaultValue={editingCard.phonetic || ''} /><input id="editExample" className="w-full input-clean p-4 rounded-xl mb-4" placeholder="Example" defaultValue={editingCard.example || ''} /><button onClick={() => updateCard(editingCard.id, { front: document.getElementById('editFront').value, back: document.getElementById('editBack').value, phonetic: document.getElementById('editPhonetic').value, example: document.getElementById('editExample').value })} className="w-full btn-primary py-4 rounded-xl">Save Changes</button></>)}
+            {modals.import && (<><h3 className="text-xl font-bold mb-2">Import CSV</h3><p className="text-sm text-muted mb-4">Format: word, meaning, phonetic, example</p><textarea id="csvInput" className="w-full input-clean p-4 rounded-xl h-40 mb-4 font-mono text-sm" placeholder="accomplish, ทำให้สำเร็จ, /əˈkɑːmplɪʃ/, We accomplished our goals." /><button onClick={() => importCSV(document.getElementById('csvInput').value)} className="w-full btn-primary py-4 rounded-xl">Import Cards</button></>)}
             {modals.settings && (
               <>
                 <h3 className="text-xl font-bold mb-6">Settings</h3>
-
-                {/* 🔥 FOCUS MODE SETTINGS (Session-Based) */}
                 <div className="bg-slate-50 p-4 rounded-2xl mb-6 border border-slate-100">
-                  <div className="flex justify-between items-center mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-primary text-white rounded-lg">
-                        <Icon name="lock" size={16} />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-heading">Focus Mode</h4>
-                        <p className="text-xs text-muted">บังคับเรียนทุกครั้งที่เข้าเว็บ</p>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setFocusSettings(prev => ({...prev, enabled: !prev.enabled}))}
-                      className={`w-12 h-7 rounded-full transition-colors relative ${focusSettings.enabled ? 'bg-primary' : 'bg-slate-300'}`}>
-                      <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-all ${focusSettings.enabled ? 'left-6' : 'left-1'}`}></div>
-                    </button>
-                  </div>
-                  
-                  {focusSettings.enabled && (
-                    <div className="animate-fade-in">
-                      <label className="text-xs font-bold text-muted uppercase block mb-2">จำนวนคำต่อครั้ง (Cards per Visit)</label>
-                      <div className="flex gap-2">
-                        {[3, 5, 10, 15].map(n => (
-                          <button key={n} onClick={() => setFocusSettings(prev => ({...prev, cardsPerVisit: n}))}
-                            className={`flex-1 py-2.5 rounded-xl font-bold text-sm border transition-all ${
-                              focusSettings.cardsPerVisit === n 
-                                ? 'bg-primary text-white border-primary shadow-button' 
-                                : 'bg-white text-body border-slate-200 hover:border-primary'
-                            }`}>
-                            {n}
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-xs text-muted mt-2">เปิดเว็บทีนึง ต้องทวน {focusSettings.cardsPerVisit} คำ ก่อนใช้งานอื่น</p>
-                    </div>
-                  )}
+                  <div className="flex justify-between items-center mb-3"><div className="flex items-center gap-2"><div className="p-1.5 bg-primary text-white rounded-lg"><Icon name="lock" size={16} /></div><div><h4 className="font-bold text-heading">Focus Mode</h4><p className="text-xs text-muted">บังคับเรียนทุกครั้งที่เข้าเว็บ</p></div></div><button onClick={() => setFocusSettings(prev => ({...prev, enabled: !prev.enabled}))} className={`w-12 h-7 rounded-full transition-colors relative ${focusSettings.enabled ? 'bg-primary' : 'bg-slate-300'}`}><div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-all ${focusSettings.enabled ? 'left-6' : 'left-1'}`}></div></button></div>
+                  {focusSettings.enabled && (<div className="animate-fade-in"><label className="text-xs font-bold text-muted uppercase block mb-2">จำนวนคำต่อครั้ง (Cards per Visit)</label><div className="flex gap-2">{[3, 5, 10, 15].map(n => (<button key={n} onClick={() => setFocusSettings(prev => ({...prev, cardsPerVisit: n}))} className={`flex-1 py-2.5 rounded-xl font-bold text-sm border transition-all ${focusSettings.cardsPerVisit === n ? 'bg-primary text-white border-primary shadow-button' : 'bg-white text-body border-slate-200 hover:border-primary'}`}>{n}</button>))}</div><p className="text-xs text-muted mt-2">เปิดเว็บทีนึง ต้องทวน {focusSettings.cardsPerVisit} คำ ก่อนใช้งานอื่น</p></div>)}
                 </div>
-
-                <div className="mb-6">
-                  <label className="text-xs font-bold text-muted uppercase block mb-2">Gemini API Key</label>
-                  <input value={apiKey} onChange={e => setApiKey(e.target.value)}
-                    className="w-full input-clean p-3 rounded-xl mb-3" type="password" placeholder="Enter API key" />
-                  <button onClick={() => { DB.setApiKey(apiKey); notify('API key saved'); }}
-                    className="w-full border-2 border-lavender text-lavender py-3 rounded-xl font-semibold hover:bg-violet-50">Save API Key</button>
-                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-sky hover:underline mt-2 inline-block">→ Get free API key</a>
-                </div>
-                <div className="mb-6">
-                  <label className="text-xs font-bold text-muted uppercase block mb-2">Sync Key</label>
-                  <div className="flex gap-2">
-                    <input id="syncKeyInput" className="flex-1 input-clean p-3 rounded-xl font-mono text-sm" placeholder="Enter sync key" defaultValue={currentSyncKey} />
-                    <button onClick={() => { const v = document.getElementById('syncKeyInput').value; if (v) navigator.clipboard.writeText(v).then(() => notify('Copied!')); }}
-                      className="p-3 btn-secondary rounded-xl"><Icon name="copy" size={18} /></button>
-                  </div>
-                  <button onClick={() => updateSyncKey(document.getElementById('syncKeyInput').value)}
-                    className="w-full mt-3 border-2 border-primary text-primary py-3 rounded-xl font-semibold hover:bg-orange-50">Update Sync Key</button>
-                </div>
-                <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Icon name="shield-check" size={18} className="text-mint" />
-                    <span className="text-sm font-semibold text-mint">Smart Sync v8.6</span>
-                  </div>
-                  <p className="text-xs text-body">✅ Soft Delete - ลบแล้วจะไม่กลับมา</p>
-                  <p className="text-xs text-body">✅ Smart Merge - ป้องกัน progress หาย</p>
-                  <p className="text-xs text-body">✅ Session Focus - บังคับเรียนทุกครั้งที่เข้าเว็บ</p>
-                </div>
+                <div className="mb-6"><label className="text-xs font-bold text-muted uppercase block mb-2">Gemini API Key</label><input value={apiKey} onChange={e => setApiKey(e.target.value)} className="w-full input-clean p-3 rounded-xl mb-3" type="password" placeholder="Enter API key" /><button onClick={() => { DB.setApiKey(apiKey); notify('API key saved'); }} className="w-full border-2 border-lavender text-lavender py-3 rounded-xl font-semibold hover:bg-violet-50">Save API Key</button><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-xs text-sky hover:underline mt-2 inline-block">→ Get free API key</a></div>
+                <div className="mb-6"><label className="text-xs font-bold text-muted uppercase block mb-2">Sync Key</label><div className="flex gap-2"><input id="syncKeyInput" className="flex-1 input-clean p-3 rounded-xl font-mono text-sm" placeholder="Enter sync key" defaultValue={currentSyncKey} /><button onClick={() => { const v = document.getElementById('syncKeyInput').value; if (v) navigator.clipboard.writeText(v).then(() => notify('Copied!')); }} className="p-3 btn-secondary rounded-xl"><Icon name="copy" size={18} /></button></div><button onClick={() => updateSyncKey(document.getElementById('syncKeyInput').value)} className="w-full mt-3 border-2 border-primary text-primary py-3 rounded-xl font-semibold hover:bg-orange-50">Update Sync Key</button></div>
+                <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200"><div className="flex items-center gap-2 mb-2"><Icon name="shield-check" size={18} className="text-mint" /><span className="text-sm font-semibold text-mint">Smart Sync v8.6</span></div><p className="text-xs text-body">✅ Soft Delete - ลบแล้วจะไม่กลับมา</p><p className="text-xs text-body">✅ Smart Merge - ป้องกัน progress หาย</p><p className="text-xs text-body">✅ Session Focus - บังคับเรียนทุกครั้งที่เข้าเว็บ</p></div>
               </>
             )}
           </div>
         </div>
       )}
 
-      <ConfirmDialog isOpen={confirmDialog.isOpen} title={confirmDialog.title} message={confirmDialog.message}
-        type={confirmDialog.type} onConfirm={confirmDialog.onConfirm} onCancel={() => setConfirmDialog({ isOpen: false })} />
-
-      {toast && (
-        <div className={`fixed top-20 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-elevated z-[70] font-semibold text-sm flex items-center gap-2 animate-scale-in ${
-          toast.type === 'error' ? 'bg-coral text-white' : toast.type === 'warning' ? 'bg-gold text-white' : 'bg-mint text-white'
-        }`}>
-          <Icon name={toast.type === 'error' ? 'alert-circle' : toast.type === 'warning' ? 'alert-triangle' : 'check'} size={16} />
-          {toast.msg}
-        </div>
-      )}
+      <ConfirmDialog isOpen={confirmDialog.isOpen} title={confirmDialog.title} message={confirmDialog.message} type={confirmDialog.type} onConfirm={confirmDialog.onConfirm} onCancel={() => setConfirmDialog({ isOpen: false })} />
+      {toast && (<div className={`fixed top-20 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-elevated z-[70] font-semibold text-sm flex items-center gap-2 animate-scale-in ${toast.type === 'error' ? 'bg-coral text-white' : toast.type === 'warning' ? 'bg-gold text-white' : 'bg-mint text-white'}`}><Icon name={toast.type === 'error' ? 'alert-circle' : toast.type === 'warning' ? 'alert-triangle' : 'check'} size={16} />{toast.msg}</div>)}
     </div>
   );
 }
